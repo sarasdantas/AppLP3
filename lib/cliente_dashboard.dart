@@ -2,25 +2,16 @@ import 'package:flutter/material.dart';
 
 enum _StatusServico { aberto, emAndamento, finalizado }
 
-// 1. Criamos uma classe para representar cada tarefa individualmente
-class _Tarefa {
-  final String titulo;
-  bool concluida;
-
-  _Tarefa({required this.titulo, this.concluida = false});
-}
-
 class _Servico {
   final String id;
   final String data;
   final String endereco;
   final int valor;
   final _StatusServico status;
-  // Alterado de 'int tarefas' para uma lista real de Objetos _Tarefa
-  final List<_Tarefa> tarefas; 
+  final int tarefas;
   final String? colaborador;
 
-  _Servico({
+  const _Servico({
     required this.id,
     required this.data,
     required this.endereco,
@@ -43,20 +34,14 @@ class ClienteDashboardPage extends StatefulWidget {
 class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
   _Aba _aba = _Aba.todos;
 
-  // 2. Modificamos os dados de teste para conter listas de tarefas reais
-  // Removido o 'static const' para permitir que o estado mude ao flegar
-  final List<_Servico> _servicos = [
+  static const _servicos = <_Servico>[
     _Servico(
       id: '1',
       data: '05/05/2026',
       endereco: 'Rua das Flores, 123',
       valor: 150,
       status: _StatusServico.aberto,
-      tarefas: [
-        _Tarefa(titulo: 'Lavar a louça'),
-        _Tarefa(titulo: 'Limpar as janelas'),
-        _Tarefa(titulo: 'Aspirar a sala'),
-      ],
+      tarefas: 5,
     ),
     _Servico(
       id: '2',
@@ -64,12 +49,8 @@ class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
       endereco: 'Av. Principal, 456',
       valor: 200,
       status: _StatusServico.emAndamento,
+      tarefas: 8,
       colaborador: 'Maria Silva',
-      tarefas: [
-        _Tarefa(titulo: 'Limpar banheiro principal', concluida: true),
-        _Tarefa(titulo: 'Trocar roupas de cama'),
-        _Tarefa(titulo: 'Passar pano no chão'),
-      ],
     ),
     _Servico(
       id: '3',
@@ -77,11 +58,8 @@ class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
       endereco: 'Rua do Comércio, 789',
       valor: 180,
       status: _StatusServico.finalizado,
+      tarefas: 6,
       colaborador: 'Ana Santos',
-      tarefas: [
-        _Tarefa(titulo: 'Limpar cozinha', concluida: true),
-        _Tarefa(titulo: 'Limpar área de serviço', concluida: true),
-      ],
     ),
   ];
 
@@ -102,7 +80,7 @@ class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
     }
   }
 
- @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
@@ -114,7 +92,7 @@ class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.all(16),
-                itemCount: _filtrados.length, // Deixamos apenas uma vez
+                itemCount: _filtrados.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, i) => _buildCardServico(_filtrados[i]),
               ),
@@ -206,132 +184,89 @@ class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
   }
 
   Widget _buildCardServico(_Servico s) {
-    // Calculando dinamicamente a quantidade de tarefas concluídas
-    final concluidas = s.tarefas.where((t) => t.concluida).length;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => Navigator.pushNamed(
+        context,
+        '/cliente/detalhes-servico',
+        arguments: _statusLabel(s.status),
       ),
-      child: Theme(
-        // Remove as bordas que o ExpansionTile coloca por padrão ao expandir
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          tilePadding: const EdgeInsets.all(16),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          // Cabeçalho do Card
-          title: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      s.endereco,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      s.data,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _badgeStatus(s.status),
-            ],
-          ),
-          // Corpo do Card que expande
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (s.colaborador != null) ...[
-              const SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text.rich(
-                  TextSpan(
-                    text: 'Colaborador: ',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextSpan(
-                        text: s.colaborador,
+                      Text(
+                        s.endereco,
                         style: const TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        s.data,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
                         ),
                       ),
                     ],
                   ),
                 ),
+                _badgeStatus(s.status),
+              ],
+            ),
+            if (s.colaborador != null) ...[
+              const SizedBox(height: 8),
+              Text.rich(
+                TextSpan(
+                  text: 'Colaborador: ',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: s.colaborador,
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
-            
             const SizedBox(height: 12),
             const Divider(height: 1),
-            const SizedBox(height: 8),
-            
-            // ── LISTA DE TAREFAS DE FLEGAS (Modificação Principal) ──
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Lista de Tarefas:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
-              ),
-            ),
-            const SizedBox(height: 4),
-            ...s.tarefas.map((tarefa) {
-              return CheckboxListTile(
-                title: Text(
-                  tarefa.titulo,
-                  style: TextStyle(
-                    fontSize: 14,
-                    decoration: tarefa.concluida ? TextDecoration.lineThrough : null,
-                    color: tarefa.concluida ? Colors.grey : Colors.black87,
-                  ),
-                ),
-                value: tarefa.concluida,
-                dense: true,
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                activeColor: const Color(0xFF2563EB),
-                onChanged: (bool? valor) {
-                  // Atualiza o estado da flag de check/uncheck
-                  setState(() {
-                    tarefa.concluida = valor ?? false;
-                  });
-                },
-              );
-            }).toList(),
-            
-            const Divider(height: 1),
             const SizedBox(height: 12),
-            
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '$concluidas de ${s.tarefas.length} tarefas feitas',
+                  '${s.tarefas} tarefas',
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 Text(
@@ -344,30 +279,8 @@ class _ClienteDashboardPageState extends State<ClienteDashboardPage> {
                 ),
               ],
             ),
-            
-            // Se precisar navegar para a tela de detalhes completa
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pushNamed(
-                      context,
-                      '/cliente/detalhes-servico',
-                      arguments: {'status': _statusLabel(s.status), 'tarefas': s.tarefas},
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF2563EB)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Ver todos os detalhes', style: TextStyle(color: Color(0xFF2563EB))),
-                  ),
-                ),
-              ],
-            ),
-
             if (s.status == _StatusServico.finalizado) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(

@@ -62,10 +62,8 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // '/colaborador_feed_oportunidades'
       final rotaDestino =
-          tipoReal == 'colaborador' ? '/colaborador_feed_oportunidades' : '/cliente/dashboard';
-          
+          tipoReal == 'colaborador' ? '/colaborador/feed' : '/cliente/dashboard';
       Navigator.pushReplacementNamed(context, rotaDestino);
     } on FirebaseAuthException catch (ex) {
       String mensagem = ex.message ?? 'Erro ao fazer login.';
