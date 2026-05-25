@@ -58,7 +58,7 @@ class _RegistroPageState extends State<RegistroPage> {
             'nome': txtNome.text.trim(),
             'email': txtEmail.text.trim(),
             'tipo': _tipoUsuario,
-            'avaliacaoMedia': _tipoUsuario == 'colaboradora' ? 0.0 : null,
+            'avaliacaoMedia': _tipoUsuario == 'colaborador' ? 0.0 : null,
             'foto': null,
             'criadoEm': FieldValue.serverTimestamp(),
           });

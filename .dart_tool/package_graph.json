@@ -7,7 +7,9 @@
       "name": "casa_limpa",
       "version": "0.1.0+1",
       "dependencies": [
-        "flutter"
+        "flutter",
+        "flutter_localizations",
+        "intl"
       ],
       "devDependencies": [
         "cloud_firestore",
@@ -75,6 +77,24 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "intl",
+      "version": "0.20.2",
+      "dependencies": [
+        "clock",
+        "meta",
+        "path"
+      ]
+    },
+    {
+      "name": "flutter_localizations",
+      "version": "0.0.0",
+      "dependencies": [
+        "flutter",
+        "intl",
+        "path"
       ]
     },
     {

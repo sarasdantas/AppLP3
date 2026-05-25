@@ -8,8 +8,17 @@ class AvaliarColaboradorPage extends StatefulWidget {
 }
 
 class _AvaliarColaboradorPageState extends State<AvaliarColaboradorPage> {
-  int _notaEstrelas = 0;
+  int _nota = 0;
   final _comentarioController = TextEditingController();
+
+  static const _legendas = {
+    0: 'Selecione uma nota',
+    1: 'Muito ruim',
+    2: 'Ruim',
+    3: 'Regular',
+    4: 'Bom',
+    5: 'Excelente!',
+  };
 
   @override
   void dispose() {
@@ -17,91 +26,205 @@ class _AvaliarColaboradorPageState extends State<AvaliarColaboradorPage> {
     super.dispose();
   }
 
+  void _enviar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Obrigado pela sua avaliação!')),
+    );
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/cliente/dashboard',
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colaborador =
+        ModalRoute.of(context)?.settings.arguments as String? ?? 'Maria Silva';
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6F8),
       appBar: AppBar(
-        title: const Text('Avaliar Colaborador'),
+        title: const Text(
+          'Avaliar Serviço',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 1,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const SizedBox(height: 20),
-            const Text(
-              'Como foi a faxina com Maria Silva?',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Sua avaliação ajuda a manter a qualidade da comunidade.',
-              style: TextStyle(color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-
-            // Linha de Seleção de Estrelas (Interativa)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(5, (index) {
-                return IconButton(
-                  icon: Icon(
-                    index < _notaEstrelas ? Icons.star : Icons.star_border,
-                    color: Colors.amber,
-                    size: 40,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _notaEstrelas = index + 1;
-                    });
-                  },
-                );
-              }),
-            ),
-            const SizedBox(height: 32),
-
-            // Campo de comentário por texto
-            TextField(
-              controller: _comentarioController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Deixe um comentário sobre o serviço (opcional)...',
-                alignLabelWithHint: true,
-              ),
-            ),
-            const SizedBox(height: 40),
-
-            // Botão de envio
+            _cardColaborador(colaborador),
+            const SizedBox(height: 12),
+            _cardEstrelas(),
+            const SizedBox(height: 12),
+            _cardComentario(),
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _notaEstrelas == 0
-                    ? null // Desabilita o botão se não selecionou nenhuma estrela
-                    : () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Obrigado pela sua avaliação!'),
-                          ),
-                        );
-                        // Limpa o histórico de navegação e volta para a dashboard do cliente
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          '/cliente/dashboard',
-                          (route) => false,
-                        );
-                      },
+                onPressed: _nota == 0 ? null : _enviar,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  disabledForegroundColor: Colors.grey.shade600,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
                 child: const Text(
                   'Enviar Avaliação',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _cardBase({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _cardColaborador(String nome) {
+    return _cardBase(
+      child: Column(
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEDE9FE),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              nome.characters.first,
+              style: const TextStyle(
+                color: Color(0xFF7C3AED),
+                fontWeight: FontWeight.bold,
+                fontSize: 32,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            nome,
+            style: const TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Colaboradora',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardEstrelas() {
+    return _cardBase(
+      child: Column(
+        children: [
+          const Text(
+            'Como foi o serviço?',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (i) {
+              final preenchida = i < _nota;
+              return GestureDetector(
+                onTap: () => setState(() => _nota = i + 1),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: AnimatedScale(
+                    scale: preenchida ? 1.0 : 0.95,
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      preenchida ? Icons.star : Icons.star_border,
+                      color: preenchida
+                          ? const Color(0xFFFACC15)
+                          : Colors.grey.shade300,
+                      size: 44,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _legendas[_nota] ?? '',
+            style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardComentario() {
+    return _cardBase(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Deixe um comentário (opcional)',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _comentarioController,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Conte como foi sua experiência...',
+              hintStyle:
+                  TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              filled: true,
+              fillColor: const Color(0xFFF5F6F8),
+              contentPadding: const EdgeInsets.all(14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    const BorderSide(color: Color(0xFF2563EB), width: 2),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

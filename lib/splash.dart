@@ -88,7 +88,7 @@ class SplashPage extends StatelessWidget {
 
                 const SizedBox(height: 12),
 
-                // ── Botão Colaboradora ───────────────────────────────────
+                // ── Botão Colaborador ───────────────────────────────────
                 SizedBox(
                   width: double.infinity,
                   height: 54,
@@ -96,11 +96,11 @@ class SplashPage extends StatelessWidget {
                     onPressed: () => Navigator.pushNamed(
                       context,
                       '/login',
-                      arguments: 'colaboradora',
+                      arguments: 'colaborador',
                     ),
                     icon: const Icon(Icons.person_outline_rounded, size: 20),
                     label: const Text(
-                      'Sou Colaboradora',
+                      'Sou Colaborador',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,

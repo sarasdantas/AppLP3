@@ -47,9 +47,7 @@ class _LoginPageState extends State<LoginPage> {
         // Faz logout imediatamente para não deixar sessão aberta
         await FirebaseAuth.instance.signOut();
 
-        final tipoLabel = tipoEsperado == 'cliente'
-            ? 'Cliente'
-            : 'Colaboradora';
+        final tipoLabel = tipoEsperado == 'cliente' ? 'Cliente' : 'Colaborador';
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -64,7 +62,9 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      Navigator.pushReplacementNamed(context, '/lista');
+      final rotaDestino =
+          tipoReal == 'colaborador' ? '/colaborador/feed' : '/cliente/dashboard';
+      Navigator.pushReplacementNamed(context, rotaDestino);
     } on FirebaseAuthException catch (ex) {
       String mensagem = ex.message ?? 'Erro ao fazer login.';
       if (ex.code == 'invalid-credential' ||
@@ -88,7 +88,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final tipo =
         ModalRoute.of(context)?.settings.arguments as String? ?? 'cliente';
-    final isColaboradora = tipo == 'colaboradora';
+    final isColaborador = tipo == 'colaborador';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
@@ -132,7 +132,7 @@ class _LoginPageState extends State<LoginPage> {
 
                 // ── Título dinâmico ───────────────────────────────────────
                 Text(
-                  isColaboradora ? 'Olá, Colaboradora!' : 'Bem-vindo de volta!',
+                  isColaborador ? 'Olá, Colaborador!' : 'Bem-vindo de volta!',
                   style: const TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w800,
