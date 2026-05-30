@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'app.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'app.dart';
 
+// Suas configurações do Firebase que já funcionavam
 const firebaseConfig = FirebaseOptions(
   apiKey: "AIzaSyDPBlZvUpr6WxfTc-3JXdDvDEoCRiNlcek",
   authDomain: "casa-limpa-5d2ea.firebaseapp.com",
@@ -13,6 +14,7 @@ const firebaseConfig = FirebaseOptions(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Inicializa o Firebase antes de rodar o app
   await Firebase.initializeApp(options: firebaseConfig);
   runApp(const App());
 }
