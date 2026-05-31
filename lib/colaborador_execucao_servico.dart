@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class _Tarefa {
   final int id;
@@ -42,35 +43,18 @@ class _ColaboradorExecucaoServicoPageState
     setState(() => t.concluida = !t.concluida);
   }
 
-  Future<void> _finalizar() async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Finalizar serviço'),
-        content: const Text(
-            'Tem certeza que deseja finalizar este serviço? O cliente será notificado para avaliação.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF16A34A),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Finalizar'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || confirmar != true) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Serviço finalizado com sucesso!')),
-    );
-    Navigator.pop(context);
-  }
+  Future<void> _atualizarStatusServico(String idDoc, String novoStatus) async {
+  await FirebaseFirestore.instance
+      .collection('propostas')
+      .doc(idDoc)
+      .update({'status': novoStatus});
+
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Serviço atualizado para: $novoStatus')),
+  );
+  Navigator.pop(context);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +81,7 @@ class _ColaboradorExecucaoServicoPageState
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _tudoConcluido ? _finalizar : null,
+                onPressed: _tudoConcluido ? () => _atualizarStatusServico('ID_DO_DOCUMENTO', 'finalizado') : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF16A34A),
                   foregroundColor: Colors.white,

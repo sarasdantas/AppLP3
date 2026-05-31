@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'splash.dart';
 import 'login.dart';
 import 'lista.dart';
+import 'cliente_detalhes_servico.dart';
+import 'colaborador_execucao_servico.dart';
+import 'editar_faxina.dart';
+import 'analisar_perfil.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -23,6 +27,10 @@ class App extends StatelessWidget {
         '/': (context) => const SplashPage(),
         '/login': (context) => const LoginPage(),
         '/lista': (context) => const ListaPage(),
+        '/cliente/detalhes': (context) => const ClienteDetalhesServicoPage(),
+        '/colaborador/detalhes': (context) => const ColaboradorExecucaoServicoPage(),
+        '/perfil': (context) => const AnalisarPerfilPage(),
+        '/editar': (context) => const EditarFaxinaPage(),
       },
     );
   }

@@ -25,8 +25,10 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = ModalRoute.of(context)?.settings.arguments as String? ??
-        'Em Andamento';
+    final args =
+        ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+    final String idDocumento = args['id'] ?? '';
+    final String status = args['status'] ?? 'não iniciada';
     final concluidas = _tarefas.where((t) => t.concluida).length;
     final progresso = _tarefas.isEmpty ? 0.0 : concluidas / _tarefas.length;
     final progressoPct = (progresso * 100).round();
@@ -68,8 +70,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
                   icon: const Icon(Icons.star),
                   label: const Text(
                     'Avaliar Serviço',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFACC15),
@@ -85,6 +86,75 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
           ],
         ),
       ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: _buildBotoesFluxo(idDocumento, status),
+      ),
+    );
+  }
+
+  Widget _buildBotoesFluxo(String idDoc, String status) {
+    if (status == 'não iniciada') {
+      return Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => _mudarStatus(idDoc, 'em andamento'),
+              child: const Text('Iniciar Faxina'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+              ),
+              onPressed: () => _mudarStatus(idDoc, 'cancelada'),
+              child: const Text('Cancelar'),
+            ),
+          ),
+        ],
+      );
+    } else if (status == 'em andamento') {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () => _mudarStatus(idDoc, 'concluída'),
+          child: const Text('Marcar como Concluída'),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'Serviço finalizado com o status: ${status.toUpperCase()}',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Colors.black54,
+        ),
+      ),
+    );
+  }
+
+  //função temporária de teste para simular a mudança de status no console antes de conectar ao firebase
+  void _mudarStatus(String idDoc, String novoStatus) {
+    debugPrint(
+      'Solicitando mudança de status do documento $idDoc para: $novoStatus',
     );
   }
 
@@ -131,13 +201,14 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
                 Text(
                   _servico['colaborador'] as String,
                   style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Colaboradora',
-                  style: TextStyle(
-                      color: Colors.grey.shade600, fontSize: 13),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                 ),
                 const SizedBox(height: 6),
                 _badgeStatus(status),
@@ -153,19 +224,27 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
     return _cardBase(
       child: Column(
         children: [
-          _linhaInfo(Icons.location_on_outlined, 'Endereço',
-              _servico['endereco'] as String),
+          _linhaInfo(
+            Icons.location_on_outlined,
+            'Endereço',
+            _servico['endereco'] as String,
+          ),
           const SizedBox(height: 14),
-          _linhaInfo(Icons.calendar_today_outlined, 'Data',
-              _servico['data'] as String),
+          _linhaInfo(
+            Icons.calendar_today_outlined,
+            'Data',
+            _servico['data'] as String,
+          ),
           const SizedBox(height: 14),
           const Divider(height: 1),
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Valor do serviço',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text(
+                'Valor do serviço',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               Text(
                 'R\$ ${_servico['valor']}',
                 style: const TextStyle(
@@ -191,12 +270,12 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(titulo,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
-              Text(valor,
-                  style: TextStyle(
-                      color: Colors.grey.shade700, fontSize: 13)),
+              Text(
+                valor,
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              ),
             ],
           ),
         ),
@@ -212,9 +291,10 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Progresso da limpeza',
-                  style:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text(
+                'Progresso da limpeza',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
               Text(
                 '$pct%',
                 style: const TextStyle(
@@ -232,8 +312,9 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
               value: progresso,
               minHeight: 10,
               backgroundColor: Colors.grey.shade200,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFF2563EB),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -279,8 +360,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
                       ),
                     ),
                     child: _tarefas[i].concluida
-                        ? const Icon(Icons.check,
-                            color: Colors.white, size: 16)
+                        ? const Icon(Icons.check, color: Colors.white, size: 16)
                         : null,
                   ),
                   const SizedBox(width: 14),
