@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'splash.dart';
 import 'login.dart';
+import 'registro.dart';
 import 'lista.dart';
 import 'cliente_detalhes_servico.dart';
 import 'colaborador_execucao_servico.dart';
@@ -26,6 +27,7 @@ class App extends StatelessWidget {
       routes: {
         '/': (context) => const SplashPage(),
         '/login': (context) => const LoginPage(),
+        '/registro': (context) => RegistroPage(),
         '/lista': (context) => const ListaPage(),
         '/cliente/detalhes': (context) => const ClienteDetalhesServicoPage(),
         '/colaborador/detalhes': (context) => const ColaboradorExecucaoServicoPage(),

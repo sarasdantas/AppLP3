@@ -3,76 +3,95 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class RegistroPage extends StatefulWidget {
+  const RegistroPage({super.key});
+
   @override
   State<RegistroPage> createState() => _RegistroPageState();
 }
 
 class _RegistroPageState extends State<RegistroPage> {
   final _formKey = GlobalKey<FormState>();
-  final txtNome = TextEditingController();
-  final txtEmail = TextEditingController();
-  final txtSenha = TextEditingController();
+  final _nomeController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _senhaController = TextEditingController();
+  final _confirmarController = TextEditingController();
 
-  late String _tipoUsuario;
-
+  bool _acessoCliente = false;
+  bool _acessoColaborador = false;
   bool _loading = false;
-  bool _obscureSenha = true;
   bool _tipoIniciado = false;
-
-  @override
-  void dispose() {
-    txtNome.dispose();
-    txtEmail.dispose();
-    txtSenha.dispose();
-    super.dispose();
-  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_tipoIniciado) {
-      _tipoUsuario =
-          ModalRoute.of(context)?.settings.arguments as String? ?? 'cliente';
+      final tipo = ModalRoute.of(context)?.settings.arguments as String?;
+      if (tipo == 'colaborador') _acessoColaborador = true;
+      if (tipo == 'cliente') _acessoCliente = true;
       _tipoIniciado = true;
     }
   }
 
-  Future<void> registrar() async {
+  @override
+  void dispose() {
+    _nomeController.dispose();
+    _emailController.dispose();
+    _senhaController.dispose();
+    _confirmarController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _registrar() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_acessoCliente && !_acessoColaborador) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione ao menos um tipo de acesso.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final tipoUsuario = _acessoColaborador ? 'colaborador' : 'cliente';
     setState(() => _loading = true);
 
     try {
-      var credential = await FirebaseAuth.instance
+      final credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
-            email: txtEmail.text.trim(),
-            password: txtSenha.text.trim(),
+            email: _emailController.text.trim(),
+            password: _senhaController.text.trim(),
           );
 
-      await credential.user?.updateDisplayName(txtNome.text.trim());
+      await credential.user?.updateDisplayName(_nomeController.text.trim());
 
       await FirebaseFirestore.instance
           .collection('usuarios')
           .doc(credential.user!.uid)
           .set({
             'id': credential.user!.uid,
-            'nome': txtNome.text.trim(),
-            'email': txtEmail.text.trim(),
-            'tipo': _tipoUsuario,
-            'avaliacaoMedia': _tipoUsuario == 'colaborador' ? 0.0 : null,
+            'nome': _nomeController.text.trim(),
+            'email': _emailController.text.trim(),
+            'acessoCliente': _acessoCliente,
+            'acessoColaborador': _acessoColaborador,
+            'avaliacaoMedia': _acessoColaborador ? 0.0 : null,
             'foto': null,
             'criadoEm': FieldValue.serverTimestamp(),
           });
 
-      txtNome.clear();
-      txtEmail.clear();
-      txtSenha.clear();
-
-      Navigator.pushReplacementNamed(context, '/lista');
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        '/lista',
+        arguments: tipoUsuario,
+      );
     } on FirebaseAuthException catch (ex) {
       String mensagem = ex.message ?? 'Erro ao registrar.';
       if (ex.code == 'email-already-in-use') {
         mensagem = 'Este e-mail já está em uso.';
       }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(mensagem),
@@ -88,212 +107,209 @@ class _RegistroPageState extends State<RegistroPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── Botão voltar ──────────────────────────────────────────
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        foregroundColor: const Color(0xFF1E293B),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(28, 8, 28, 28),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Cadastrar',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1E293B),
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Entre com seus dados para continuar',
+                style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 36),
+
+              _campo(
+                label: 'Nome',
+                hint: 'Seu nome',
+                controller: _nomeController,
+                textCapitalization: TextCapitalization.words,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Informe seu nome' : null,
+              ),
+              const SizedBox(height: 20),
+
+              _campo(
+                label: 'E-mail',
+                hint: 'seu@email.com',
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) => (v != null && v.contains('@'))
+                    ? null
+                    : 'Insira um e-mail válido',
+              ),
+              const SizedBox(height: 20),
+
+              _campo(
+                label: 'Senha',
+                hint: '••••••••••',
+                controller: _senhaController,
+                obscure: true,
+                validator: (v) =>
+                    (v == null || v.length < 6) ? 'Mínimo de 6 caracteres' : null,
+              ),
+              const SizedBox(height: 20),
+
+              _campo(
+                label: 'Confirmar senha',
+                hint: '••••••••••',
+                controller: _confirmarController,
+                obscure: true,
+                validator: (v) =>
+                    (v != _senhaController.text) ? 'As senhas não conferem' : null,
+              ),
+              const SizedBox(height: 28),
+
+              _checkAcesso(
+                label: 'Desejo ter acesso de cliente',
+                value: _acessoCliente,
+                onChanged: (v) => setState(() => _acessoCliente = v ?? false),
+              ),
+              const SizedBox(height: 12),
+              _checkAcesso(
+                label: 'Desejo ter acesso de colaborador',
+                value: _acessoColaborador,
+                onChanged: (v) =>
+                    setState(() => _acessoColaborador = v ?? false),
+              ),
+              const SizedBox(height: 32),
+
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _registrar,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563EB),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back_rounded,
-                        size: 20,
-                        color: Color(0xFF1E1B4B),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-
-                const Text(
-                  'Criar conta',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1E1B4B),
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Preencha os dados para se cadastrar',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                ),
-
-                const SizedBox(height: 28),
-
-                TextFormField(
-                  controller: txtNome,
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  decoration: _inputDeco(
-                    label: 'Nome completo',
-                    hint: 'Seu nome',
-                    icon: Icons.person_outline_rounded,
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Informe o nome';
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 14),
-
-                TextFormField(
-                  controller: txtEmail,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  autocorrect: false,
-                  decoration: _inputDeco(
-                    label: 'E-mail',
-                    hint: 'seu@email.com',
-                    icon: Icons.email_outlined,
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty)
-                      return 'Informe o e-mail';
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 14),
-
-                TextFormField(
-                  controller: txtSenha,
-                  obscureText: _obscureSenha,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => registrar(),
-                  decoration: _inputDeco(
-                    label: 'Senha',
-                    hint: 'Mínimo 6 caracteres',
-                    icon: Icons.lock_outline_rounded,
-                    suffix: IconButton(
-                      icon: Icon(
-                        _obscureSenha
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 20,
-                        color: Colors.grey.shade500,
-                      ),
-                      onPressed: () =>
-                          setState(() => _obscureSenha = !_obscureSenha),
-                    ),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Crie uma senha';
-                    if (v.length < 6) return 'Mínimo 6 caracteres';
-                    return null;
-                  },
-                ),
-
-                const SizedBox(height: 32),
-
-                SizedBox(
-                  height: 54,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : registrar,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3B82F6),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : const Text(
-                            'Registrar',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        )
+                      : const Text(
+                          'Cadastrar',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
-                  ),
+                        ),
                 ),
-
-                const SizedBox(height: 12),
-
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'Voltar',
-                    style: TextStyle(color: Colors.grey.shade500),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  InputDecoration _inputDeco({
+  Widget _checkAcesso({
+    required String label,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 26,
+            height: 26,
+            child: Checkbox(
+              value: value,
+              onChanged: onChanged,
+              activeColor: const Color(0xFF2563EB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              side: BorderSide(color: Colors.grey.shade400),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 15, color: Color(0xFF1E293B)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _campo({
     required String label,
     required String hint,
-    required IconData icon,
-    Widget? suffix,
+    required TextEditingController controller,
+    bool obscure = false,
+    TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    String? Function(String?)? validator,
   }) {
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      prefixIcon: Icon(icon, size: 20, color: Colors.grey.shade500),
-      suffixIcon: suffix,
-      filled: true,
-      fillColor: Colors.white,
-      labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.grey.shade200),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.grey.shade200),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.red.shade400),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.red.shade400, width: 2),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          obscureText: obscure,
+          keyboardType: keyboardType,
+          textCapitalization: textCapitalization,
+          validator: validator,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 15),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.6),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

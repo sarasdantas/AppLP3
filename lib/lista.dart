@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-String _filtroStatus = 'visivel';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ListaPage extends StatefulWidget {
   const ListaPage({super.key});
@@ -14,39 +13,110 @@ class _ListaPageState extends State<ListaPage> {
   // Referência da coleção no Firebase Firestore
   final CollectionReference _firestorePropostas = FirebaseFirestore.instance
       .collection('propostas');
+  final CollectionReference _firestoreFaxinas = FirebaseFirestore.instance
+      .collection('faxinas');
 
-  // Controladores idênticos aos campos que vocês colocaram no Figma
+  // Controladores do formulário de nova proposta
   final _descController = TextEditingController();
   final _valorController = TextEditingController();
   final _endController = TextEditingController();
+  final _dataController = TextEditingController();
+
+  int _filtroIndex = 0; // pílula de filtro selecionada
+  int _navIndex = 0; // 0 = Propostas, 1 = Faxinas (menu inferior)
+
+  static const Color _azul = Color(0xFF2563EB);
+
+  void _mudarSecao(int index) {
+    setState(() {
+      _navIndex = index;
+      _filtroIndex = 0; // volta o filtro para "Todas" ao trocar de seção
+    });
+  }
+
+  // Define quais propostas pertencem à seção atual conforme o papel
+  bool _pertenceSecao(bool isCliente, Map<String, dynamic> dados, String? uid) {
+    final status = dados['status'] ?? '';
+    if (_navIndex == 0) {
+      // Coleção "propostas" (negociação). A aceita fica como registro p/ o
+      // colaborador ver em "Respondidas"; o cliente vê a sua em Faxinas.
+      if (isCliente) {
+        return dados['clienteId'] == uid &&
+            (status == 'visivel' || status == 'recusado');
+      }
+      // Colaborador: mural de novas + as que ele mesmo respondeu
+      return status == 'visivel' ||
+          (dados['colaboradorId'] == uid &&
+              (status == 'aceito' || status == 'recusado'));
+    } else {
+      // Coleção "faxinas": todo documento já é uma faxina; filtra só por dono.
+      if (isCliente) return dados['clienteId'] == uid;
+      return dados['colaboradorId'] == uid;
+    }
+  }
 
   @override
   void dispose() {
     _descController.dispose();
     _valorController.dispose();
     _endController.dispose();
+    _dataController.dispose();
     super.dispose();
   }
 
-  // Salva no Firebase Firestore
+  // ── Filtros por seção (Propostas x Faxinas) ───────────────────────────────
+  List<String> _filtrosLabels() {
+    return _navIndex == 0
+        ? ['Todas', 'Novas', 'Respondidas']
+        : ['Todas', 'Pendentes', 'Em andamento', 'Concluídas'];
+  }
+
+  // Decide se um documento passa no filtro selecionado
+  bool _passaNoFiltro(String status) {
+    final label = _filtrosLabels()[_filtroIndex];
+    switch (label) {
+      case 'Novas':
+        return status == 'visivel';
+      case 'Respondidas':
+        return status == 'aceito' || status == 'recusado';
+      case 'Pendentes':
+        return status == 'aceito';
+      case 'Em andamento':
+        return status == 'em_andamento';
+      case 'Concluídas':
+        return status == 'concluido';
+      default: // Todas
+        return true;
+    }
+  }
+
+  // ── Envio de nova proposta para o Firestore ───────────────────────────────
   Future<void> _subirPropostaParaFirebase() async {
     if (_descController.text.isNotEmpty &&
         _valorController.text.isNotEmpty &&
-        _endController.text.isNotEmpty) {
+        _endController.text.isNotEmpty &&
+        _dataController.text.isNotEmpty) {
+      final user = FirebaseAuth.instance.currentUser;
       await _firestorePropostas.add({
         'descricao': _descController.text.trim(),
         'valor': _valorController.text.trim(),
         'endereco': _endController.text.trim(),
+        'data_faxina': _dataController.text.trim(),
         'status': 'visivel',
+        'clienteId': user?.uid,
+        'clienteNome': user?.displayName ?? user?.email ?? 'Cliente',
+        'colaboradorId': null,
+        'colaboradorNome': null,
+        'criadoEm': FieldValue.serverTimestamp(),
       });
 
       _descController.clear();
       _valorController.clear();
       _endController.clear();
+      _dataController.clear();
 
       if (!mounted) return;
-      Navigator.pop(context); // Fecha o Modal Bottom Sheet de forma segura
-
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Proposta publicada com sucesso!'),
@@ -56,7 +126,6 @@ class _ListaPageState extends State<ListaPage> {
     }
   }
 
-  // Modal de Cadastro desenhado exatamente igual à segunda tela do seu Figma
   void _abrirFormularioCadastro() {
     showModalBottomSheet(
       context: context,
@@ -97,36 +166,22 @@ class _ListaPageState extends State<ListaPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              TextField(
-                controller: _descController,
-                decoration: InputDecoration(
-                  labelText: 'O que precisa ser limpo?',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+              _campoForm(_descController, 'O que precisa ser limpo?'),
+              const SizedBox(height: 16),
+              _campoForm(
+                _dataController,
+                'Data da Faxina (Ex: 15/06/2026)',
+                keyboardType: TextInputType.datetime,
+                icon: Icons.calendar_today_rounded,
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: _valorController,
+              _campoForm(
+                _valorController,
+                'Valor Proposto (R\$)',
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Valor Proposto (R\$)',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: _endController,
-                decoration: InputDecoration(
-                  labelText: 'Endereço da Faxina',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+              _campoForm(_endController, 'Endereço da Faxina'),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -134,7 +189,7 @@ class _ListaPageState extends State<ListaPage> {
                 child: ElevatedButton(
                   onPressed: _subirPropostaParaFirebase,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB), // Azul do Figma
+                    backgroundColor: _azul,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -154,276 +209,521 @@ class _ListaPageState extends State<ListaPage> {
     );
   }
 
+  Widget _campoForm(
+    TextEditingController controller,
+    String label, {
+    TextInputType? keyboardType,
+    IconData? icon,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: icon != null ? Icon(icon, size: 20) : null,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tipoUsuario =
         ModalRoute.of(context)!.settings.arguments as String? ?? 'cliente';
+    final isCliente = tipoUsuario == 'cliente';
+    final titulo = _navIndex == 0 ? 'Propostas' : 'Minhas faxinas';
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6), // Fundo cinza claro do Figma
-      appBar: AppBar(
-        title: Text(
-          tipoUsuario == 'cliente'
-              ? 'Minhas Propostas'
-              : 'Mural de Oportunidades',
-        ),
-        backgroundColor: const Color(0xFF2563EB), // Azul padrão de vocês
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => Navigator.pushReplacementNamed(context, '/'),
+      backgroundColor: Colors.white,
+      body: Column(
+        children: [
+          // ── Header azul curvo ─────────────────────────────────────────────
+          Container(
+            height: 70,
+            decoration: const BoxDecoration(
+              color: _azul,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: (_navIndex == 0 ? _firestorePropostas : _firestoreFaxinas)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(child: Text('Erro ao carregar dados.'));
+                }
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                // Filtra pela seção atual do menu (Propostas x Faxinas)
+                final visiveis = snapshot.data!.docs.where((doc) {
+                  final dados = doc.data() as Map<String, dynamic>;
+                  return _pertenceSecao(isCliente, dados, uid);
+                }).toList();
+
+                final filtrados = visiveis.where((doc) {
+                  final dados = doc.data() as Map<String, dynamic>;
+                  return _passaNoFiltro(dados['status'] ?? '');
+                }).toList();
+
+                final subtitulo = _navIndex == 0
+                    ? '${visiveis.length} ${visiveis.length == 1 ? 'proposta' : 'propostas'}'
+                    : '${visiveis.length} ${visiveis.length == 1 ? 'faxina' : 'faxinas'}';
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            titulo,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1E293B),
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/perfil'),
+                          icon: const Icon(
+                            Icons.account_circle_rounded,
+                            size: 34,
+                            color: _azul,
+                          ),
+                          tooltip: 'Meu perfil',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitulo,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Pílulas de filtro
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (var i = 0; i < _filtrosLabels().length; i++)
+                          _filtroPill(_filtrosLabels()[i], i),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    if (filtrados.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 60),
+                        child: Center(
+                          child: Text(
+                            'Nenhuma ${_navIndex == 0 ? 'proposta' : 'faxina'} nesta categoria.',
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      for (final doc in filtrados)
+                        _cardProposta(
+                          isCliente,
+                          doc.id,
+                          doc.data() as Map<String, dynamic>,
+                        ),
+                  ],
+                );
+              },
+            ),
           ),
         ],
       ),
-      // Resgata os dados em tempo real da nuvem do Firebase
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestorePropostas.where('status', isEqualTo: _filtroStatus).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError)
-            return const Center(child: Text('Erro ao carregar dados.'));
-          if (snapshot.connectionState == ConnectionState.waiting)
-            return const Center(child: CircularProgressIndicator());
+      bottomNavigationBar: _bottomNav(isCliente),
+    );
+  }
 
-          final documentos = snapshot.data!.docs;
+  // ── Pílula de filtro ────────────────────────────────────────────────────
+  Widget _filtroPill(String label, int index) {
+    final selecionado = _filtroIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _filtroIndex = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: selecionado ? _azul : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selecionado ? _azul : Colors.grey.shade300),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: selecionado ? Colors.white : Colors.grey.shade600,
+          ),
+        ),
+      ),
+    );
+  }
 
-          if (documentos.isEmpty) {
-            return const Center(
-              child: Text(
-                'Nenhuma faxina disponível no momento.',
-                style: TextStyle(color: Colors.grey, fontSize: 16),
-              ),
-            );
-          }
+  // ── Card de proposta ──────────────────────────────────────────────────────
+  Widget _cardProposta(
+    bool isCliente,
+    String idDocumento,
+    Map<String, dynamic> dados,
+  ) {
+    final status = (dados['status'] ?? 'visivel') as String;
+    final badge = _badgeInfo(isCliente, status);
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(20),
-            itemCount: documentos.length,
-            itemBuilder: (context, index) {
-              final doc = documentos[index];
-              final idDocumento = doc.id;
-              final dados = doc.data() as Map<String, dynamic>;
-
-              return InkWell(
-                onTap: () {
-                  if (tipoUsuario == 'cliente') {
-                    Navigator.pushNamed(
-                      context,
-                      '/cliente/detalhes',
-                      arguments: {'id': idDocumento, ...dados},
-                    );
-                  } else {
-                    Navigator.pushNamed(
-                      context,
-                      '/colaborador/detalhes',
-                      arguments: {'id': idDocumento, ...dados},
-                    );
-                  }
-                },
-                child: Card(
-                  color: Colors.white,
-                  margin: const EdgeInsets.all(16),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: Colors.grey.shade200),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dados['descricao'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.location_on_rounded,
-                              size: 16,
-                              color: Colors.grey,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                dados['endereco'] ?? '',
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          'R\$ ${dados['valor']}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF2563EB),
-                          ),
-                        ),
-
-                        // Botões de Ação Direta "Estilo Tinder" do Figma da tela 3
-                        if (tipoUsuario == 'colaborador') ...[
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Vaga ocultada.'),
-                                      ),
-                                    );
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(
-                                      color: Colors.redAccent,
-                                      width: 1.5,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Recusar',
-                                    style: TextStyle(
-                                      color: Colors.redAccent,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () async {
-                                    // Altera o status no Firebase e some instantaneamente de todas as telas
-                                    await _firestorePropostas
-                                        .doc(idDocumento)
-                                        .update({'status': 'aceito'});
-                                    if (!context.mounted) return;
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: const Text(
-                                          'Serviço Confirmado! 🎉',
-                                        ),
-                                        content: const Text(
-                                          'Vaga capturada com sucesso diretamente no Cloud Firestore.',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(context),
-                                            child: const Text('OK'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(
-                                      0xFF10B981,
-                                    ), // Verde Sucesso do Figma
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: const Text(
-                                    'Aceitar',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
+    return GestureDetector(
+      onTap: () => _abrirDetalhe(isCliente, idDocumento, dados),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Título + badge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    dados['descricao'] ?? '',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B),
                     ),
                   ),
                 ),
-              );
-            },
-          );
-        },
-      ),
-      // O Botão Azul de Nova Proposta para o Cliente
-      floatingActionButton: PopupMenuButton<String>(
-        icon: Container(
-          width: 56,
-          height: 56,
-          decoration: const BoxDecoration(
-            color: Color(0xFF2563EB),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.menu_open_rounded, color: Colors.white, size: 28),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        onSelected: (String acao) {
-          if (acao == 'criar') {
-            _abrirFormularioCadastro(); //[cite: 6]
-          } else if (acao == 'perfil') {
-            Navigator.pushNamed(context, '/perfil');
-          } else if (acao == 'mural') {
-            setState(() => _filtroStatus = 'visivel');
-          } else if (acao == 'aceitas') {
-            // Filtra pelo que não está mais aberto no mural
-            setState(() => _filtroStatus = 'não iniciada'); 
-          }
-        },
-        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-          const PopupMenuItem<String>(
-            value: 'perfil',
-            child: ListTile(
-              leading: Icon(Icons.person_outline, color: Color(0xFF2563EB)),
-              title: Text('Meu Perfil'),
+                const SizedBox(width: 8),
+                _statusBadge(badge),
+              ],
             ),
-          ),
-          if (tipoUsuario == 'cliente')
-            const PopupMenuItem<String>(
-              value: 'criar',
-              child: ListTile(
-                leading: Icon(Icons.add_circle_outline, color: Color(0xFF2563EB)),
-                title: Text('Nova Proposta'),
+            const SizedBox(height: 8),
+            // Data/horário + endereço
+            Text(
+              dados['endereco'] ?? '',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            // Chip de data
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.calendar_today_rounded,
+                    size: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    dados['data_faxina'] ?? 'Data não informada',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  ),
+                ],
               ),
             ),
-          const PopupMenuItem<String>(
-            value: 'mural',
-            child: ListTile(
-              leading: Icon(Icons.blur_on_rounded, color: Color(0xFF2563EB)),
-              title: Text('Mural de Oportunidades'),
+            const SizedBox(height: 14),
+            Divider(color: Colors.grey.shade200, height: 1),
+            const SizedBox(height: 14),
+            // Valor + ações
+            Row(
+              children: [
+                Text(
+                  'R\$ ${dados['valor']}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const Spacer(),
+                ..._acoes(isCliente, idDocumento, dados),
+              ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Abre a tela de detalhe/execução conforme a seção e o papel
+  void _abrirDetalhe(
+    bool isCliente,
+    String idDocumento,
+    Map<String, dynamic> dados,
+  ) {
+    if (_navIndex == 0) {
+      // Seção Propostas (coleção "propostas")
+      if (isCliente) {
+        Navigator.pushNamed(
+          context,
+          '/cliente/detalhes',
+          arguments: {'id': idDocumento, 'colecao': 'propostas', ...dados},
+        );
+      }
+      // Colaborador: na seção Propostas usa os botões; sem navegação
+    } else {
+      // Seção Faxinas (coleção "faxinas")
+      final args = {'id': idDocumento, 'colecao': 'faxinas', ...dados};
+      Navigator.pushNamed(
+        context,
+        isCliente ? '/cliente/detalhes' : '/colaborador/detalhes',
+        arguments: args,
+      );
+    }
+  }
+
+  // Cria a faxina e marca a proposta como aceita (registro p/ "Respondidas")
+  Future<void> _aceitarProposta(
+    String idProposta,
+    Map<String, dynamic> dados,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final colabId = user?.uid;
+    final colabNome = user?.displayName ?? user?.email ?? 'Colaborador';
+
+    await _firestorePropostas.doc(idProposta).update({
+      'status': 'aceito',
+      'colaboradorId': colabId,
+      'colaboradorNome': colabNome,
+    });
+
+    await _firestoreFaxinas.add({
+      'descricao': dados['descricao'],
+      'valor': dados['valor'],
+      'endereco': dados['endereco'],
+      'data_faxina': dados['data_faxina'],
+      'status': 'pendente',
+      'clienteId': dados['clienteId'],
+      'clienteNome': dados['clienteNome'],
+      'colaboradorId': colabId,
+      'colaboradorNome': colabNome,
+      'propostaId': idProposta,
+      'criadoEm': FieldValue.serverTimestamp(),
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Proposta aceita! Faxina criada.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  // Botões de ação conforme seção/papel/status
+  List<Widget> _acoes(
+    bool isCliente,
+    String idDocumento,
+    Map<String, dynamic> dados,
+  ) {
+    final status = (dados['status'] ?? 'visivel') as String;
+
+    // Propostas: colaborador recusa/aceita uma proposta nova
+    if (_navIndex == 0 && !isCliente && status == 'visivel') {
+      return [
+        _botaoAcao('Recusar', const Color(0xFFDC2626), () {
+          final user = FirebaseAuth.instance.currentUser;
+          _atualizarStatus(
+            idDocumento,
+            'recusado',
+            sucesso: 'Proposta recusada.',
+            extra: {
+              'colaboradorId': user?.uid,
+              'colaboradorNome':
+                  user?.displayName ?? user?.email ?? 'Colaborador',
+            },
+          );
+        }),
+        const SizedBox(width: 10),
+        _botaoAcao(
+          'Aceitar',
+          const Color(0xFF16A34A),
+          () => _aceitarProposta(idDocumento, dados),
+        ),
+      ];
+    }
+    // A conclusão da faxina é feita pelo colaborador (tela de execução).
+    return [];
+  }
+
+  Widget _botaoAcao(String label, Color cor, VoidCallback onTap) {
+    return ElevatedButton(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: cor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Future<void> _atualizarStatus(
+    String id,
+    String novoStatus, {
+    String? sucesso,
+    Map<String, dynamic>? extra,
+  }) async {
+    // A seção atual define a coleção: Propostas → propostas, Faxinas → faxinas
+    final colecao = _navIndex == 0 ? _firestorePropostas : _firestoreFaxinas;
+    await colecao.doc(id).update({
+      'status': novoStatus,
+      if (extra != null) ...extra,
+    });
+    if (!mounted || sucesso == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(sucesso), backgroundColor: Colors.green),
+    );
+  }
+
+  // ── Badge de status ───────────────────────────────────────────────────────
+  Widget _statusBadge(_Badge badge) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: badge.bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        badge.label,
+        style: TextStyle(
+          color: badge.fg,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  _Badge _badgeInfo(bool isCliente, String status) {
+    switch (status) {
+      case 'aceito':
+        return isCliente
+            ? const _Badge('Pendente', Color(0xFFFFEDD5), Color(0xFFEA580C))
+            : const _Badge('Aceita', Color(0xFFDCFCE7), Color(0xFF16A34A));
+      case 'em_andamento':
+        return const _Badge(
+          'Em andamento',
+          Color(0xFFE0E7FF),
+          Color(0xFF4F46E5),
+        );
+      case 'concluido':
+        return const _Badge('Concluída', Color(0xFFDCFCE7), Color(0xFF16A34A));
+      case 'recusado':
+        return const _Badge('Recusada', Color(0xFFFEE2E2), Color(0xFFDC2626));
+      default: // visivel
+        return const _Badge('Aguardando', Color(0xFFFEF3C7), Color(0xFFA16207));
+    }
+  }
+
+  // ── Barra de navegação inferior ────────────────────────────────────────────
+  Widget _bottomNav(bool isCliente) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: _azul,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _navItem(
+            Icons.home_rounded,
+            'Propostas',
+            ativo: _navIndex == 0,
+            onTap: () => _mudarSecao(0),
           ),
-          const PopupMenuItem<String>(
-            value: 'aceitas',
-            child: ListTile(
-              leading: Icon(Icons.assignment_turned_in_outlined, color: Color(0xFF2563EB)),
-              title: Text('Faxinas Aceitas / Em Andamento'),
+          _navItem(
+            Icons.cleaning_services_rounded,
+            'Faxinas',
+            ativo: _navIndex == 1,
+            onTap: () => _mudarSecao(1),
+          ),
+          if (isCliente)
+            GestureDetector(
+              onTap: _abrirFormularioCadastro,
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.add, color: _azul, size: 26),
+              ),
+            ),
+          _navItem(
+            Icons.logout_rounded,
+            'Sair',
+            ativo: false,
+            onTap: () => Navigator.pushReplacementNamed(context, '/'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navItem(
+    IconData icon,
+    String label, {
+    required bool ativo,
+    required VoidCallback onTap,
+  }) {
+    final cor = ativo ? Colors.white : Colors.white.withValues(alpha: 0.65);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: cor, size: 22),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: cor,
+              fontSize: 11,
+              fontWeight: ativo ? FontWeight.bold : FontWeight.w500,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _Badge {
+  final String label;
+  final Color bg;
+  final Color fg;
+  const _Badge(this.label, this.bg, this.fg);
 }

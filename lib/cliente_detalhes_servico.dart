@@ -1,37 +1,17 @@
 import 'package:flutter/material.dart';
-
-class _Tarefa {
-  final String nome;
-  final bool concluida;
-  const _Tarefa(this.nome, this.concluida);
-}
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ClienteDetalhesServicoPage extends StatelessWidget {
   const ClienteDetalhesServicoPage({super.key});
-
-  static const _tarefas = <_Tarefa>[
-    _Tarefa('Limpeza dos quartos', true),
-    _Tarefa('Limpeza dos banheiros', true),
-    _Tarefa('Aspirar e passar pano na sala', false),
-    _Tarefa('Limpeza da cozinha', false),
-  ];
-
-  static const _servico = {
-    'colaborador': 'Maria Silva',
-    'endereco': 'Av. Principal, 456 - Centro',
-    'data': '29/04/2026',
-    'valor': 200,
-  };
 
   @override
   Widget build(BuildContext context) {
     final args =
         ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
     final String idDocumento = args['id'] ?? '';
-    final String status = args['status'] ?? 'não iniciada';
-    final concluidas = _tarefas.where((t) => t.concluida).length;
-    final progresso = _tarefas.isEmpty ? 0.0 : concluidas / _tarefas.length;
-    final progressoPct = (progresso * 100).round();
+    final String nomeColecao = args['colecao'] ?? 'propostas';
+    final CollectionReference colecao =
+        FirebaseFirestore.instance.collection(nomeColecao);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
@@ -45,66 +25,87 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
         foregroundColor: Colors.black,
         elevation: 1,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildCardColaborador(status),
-            const SizedBox(height: 12),
-            _buildCardInfo(),
-            const SizedBox(height: 12),
-            _buildCardProgresso(progresso, progressoPct, concluidas),
-            const SizedBox(height: 12),
-            _buildChecklist(),
-            const SizedBox(height: 20),
-            if (status == 'Concluído')
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.pushNamed(
-                    context,
-                    '/cliente/avaliar',
-                    arguments: _servico['colaborador'],
-                  ),
-                  icon: const Icon(Icons.star),
-                  label: const Text(
-                    'Avaliar Serviço',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFACC15),
-                    foregroundColor: Colors.black87,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: colecao.doc(idDocumento).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(child: Text('Serviço não encontrado.'));
+          }
+
+          final dados = snapshot.data!.data() as Map<String, dynamic>;
+          final status = (dados['status'] ?? 'visivel') as String;
+          final colaborador = dados['colaboradorNome'] as String?;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCardColaborador(status, colaborador),
+                const SizedBox(height: 12),
+                _buildCardInfo(dados),
+              ],
+            ),
+          );
+        },
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: _buildBotoesFluxo(idDocumento, status),
+      bottomNavigationBar: StreamBuilder<DocumentSnapshot>(
+        stream: colecao.doc(idDocumento).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const SizedBox.shrink();
+          }
+          final dados = snapshot.data!.data() as Map<String, dynamic>;
+          final status = (dados['status'] ?? 'visivel') as String;
+          return Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: _buildBotoesFluxo(
+              context,
+              colecao,
+              idDocumento,
+              status,
+              dados,
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildBotoesFluxo(String idDoc, String status) {
-    if (status == 'não iniciada') {
+  // ── Ações conforme o status ─────────────────────────────────────────────
+  Widget _buildBotoesFluxo(
+    BuildContext context,
+    CollectionReference colecao,
+    String idDoc,
+    String status,
+    Map<String, dynamic> dados,
+  ) {
+    if (status == 'visivel') {
+      // Proposta ainda aberta: pode editar ou cancelar
       return Row(
         children: [
           Expanded(
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: const Color(0xFF2563EB),
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              onPressed: () => _mudarStatus(idDoc, 'em andamento'),
-              child: const Text('Iniciar Faxina'),
+              onPressed: () => Navigator.pushNamed(
+                context,
+                '/editar',
+                arguments: {
+                  'id': idDoc,
+                  'status': status,
+                  'descricao': dados['descricao'],
+                  'valor': dados['valor'],
+                  'endereco': dados['endereco'],
+                },
+              ),
+              child: const Text('Editar'),
             ),
           ),
           const SizedBox(width: 12),
@@ -113,27 +114,34 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red,
                 side: const BorderSide(color: Colors.red),
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              onPressed: () => _mudarStatus(idDoc, 'cancelada'),
+              onPressed: () => _mudarStatus(
+                context,
+                colecao,
+                idDoc,
+                'cancelada',
+                'Proposta cancelada.',
+              ),
               child: const Text('Cancelar'),
             ),
           ),
         ],
       );
-    } else if (status == 'em andamento') {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-          ),
-          onPressed: () => _mudarStatus(idDoc, 'concluída'),
-          child: const Text('Marcar como Concluída'),
-        ),
-      );
+    } else if (status == 'aceito') {
+      // Colaborador aceitou, mas ainda não iniciou
+      return _caixaInfo('Aguardando o colaborador iniciar a faxina.');
+    } else if (status == 'em_andamento') {
+      // Em execução: só o colaborador pode finalizar
+      return _caixaInfo('Faxina em andamento. Aguarde o colaborador finalizar.');
     }
 
+    return _caixaInfo(
+      'Serviço finalizado com o status: ${_rotuloStatus(status).toUpperCase()}',
+    );
+  }
+
+  Widget _caixaInfo(String texto) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -141,7 +149,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        'Serviço finalizado com o status: ${status.toUpperCase()}',
+        texto,
         textAlign: TextAlign.center,
         style: const TextStyle(
           fontWeight: FontWeight.bold,
@@ -151,13 +159,22 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
     );
   }
 
-  //função temporária de teste para simular a mudança de status no console antes de conectar ao firebase
-  void _mudarStatus(String idDoc, String novoStatus) {
-    debugPrint(
-      'Solicitando mudança de status do documento $idDoc para: $novoStatus',
+  Future<void> _mudarStatus(
+    BuildContext context,
+    CollectionReference colecao,
+    String idDoc,
+    String novoStatus,
+    String mensagem,
+  ) async {
+    await colecao.doc(idDoc).update({'status': novoStatus});
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem), backgroundColor: Colors.green),
     );
+    Navigator.pop(context);
   }
 
+  // ── Cards ─────────────────────────────────────────────────────────────────
   Widget _cardBase({required Widget child}) {
     return Container(
       width: double.infinity,
@@ -167,7 +184,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -177,7 +194,8 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardColaborador(String status) {
+  Widget _buildCardColaborador(String status, String? colaborador) {
+    final temColaborador = colaborador != null && colaborador.isNotEmpty;
     return _cardBase(
       child: Row(
         children: [
@@ -185,7 +203,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
             radius: 28,
             backgroundColor: const Color(0xFFEDE9FE),
             child: Text(
-              (_servico['colaborador'] as String).characters.first,
+              temColaborador ? colaborador.characters.first.toUpperCase() : '?',
               style: const TextStyle(
                 color: Color(0xFF7C3AED),
                 fontWeight: FontWeight.bold,
@@ -199,7 +217,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _servico['colaborador'] as String,
+                  temColaborador ? colaborador : 'Aguardando colaborador',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -207,7 +225,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Colaboradora',
+                  temColaborador ? 'Colaborador(a)' : 'Nenhum profissional ainda',
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                 ),
                 const SizedBox(height: 6),
@@ -220,20 +238,26 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardInfo() {
+  Widget _buildCardInfo(Map<String, dynamic> dados) {
     return _cardBase(
       child: Column(
         children: [
           _linhaInfo(
+            Icons.cleaning_services_outlined,
+            'Serviço',
+            dados['descricao'] ?? '',
+          ),
+          const SizedBox(height: 14),
+          _linhaInfo(
             Icons.location_on_outlined,
             'Endereço',
-            _servico['endereco'] as String,
+            dados['endereco'] ?? '',
           ),
           const SizedBox(height: 14),
           _linhaInfo(
             Icons.calendar_today_outlined,
             'Data',
-            _servico['data'] as String,
+            dados['data_faxina'] ?? 'Não informada',
           ),
           const SizedBox(height: 14),
           const Divider(height: 1),
@@ -246,7 +270,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               Text(
-                'R\$ ${_servico['valor']}',
+                'R\$ ${dados['valor']}',
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -283,119 +307,33 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardProgresso(double progresso, int pct, int concluidas) {
-    return _cardBase(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Progresso da limpeza',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                '$pct%',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2563EB),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progresso,
-              minHeight: 10,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                Color(0xFF2563EB),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$concluidas de ${_tarefas.length} tarefas concluídas',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChecklist() {
-    return _cardBase(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text(
-              'Lista de tarefas',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ),
-          for (int i = 0; i < _tarefas.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: _tarefas[i].concluida
-                          ? const Color(0xFF16A34A)
-                          : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _tarefas[i].concluida
-                            ? const Color(0xFF16A34A)
-                            : Colors.grey.shade400,
-                        width: 2,
-                      ),
-                    ),
-                    child: _tarefas[i].concluida
-                        ? const Icon(Icons.check, color: Colors.white, size: 16)
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      _tarefas[i].nome,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: _tarefas[i].concluida
-                            ? Colors.grey.shade400
-                            : Colors.black87,
-                        decoration: _tarefas[i].concluida
-                            ? TextDecoration.lineThrough
-                            : null,
-                        fontWeight: _tarefas[i].concluida
-                            ? FontWeight.normal
-                            : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (i < _tarefas.length - 1)
-              Divider(height: 1, color: Colors.grey.shade100),
-          ],
-        ],
-      ),
-    );
+  String _rotuloStatus(String status) {
+    switch (status) {
+      case 'visivel':
+        return 'Aguardando';
+      case 'aceito':
+        return 'Pendente';
+      case 'em_andamento':
+        return 'Em andamento';
+      case 'concluido':
+        return 'Concluído';
+      case 'recusado':
+        return 'Recusada';
+      case 'cancelada':
+        return 'Cancelada';
+      default:
+        return status;
+    }
   }
 
   Widget _badgeStatus(String status) {
     final (corFundo, corTexto) = switch (status) {
-      'Agendado' => (const Color(0xFFFEF3C7), const Color(0xFFA16207)),
-      'Concluído' => (const Color(0xFFDCFCE7), const Color(0xFF15803D)),
+      'visivel' => (const Color(0xFFFEF3C7), const Color(0xFFA16207)),
+      'aceito' => (const Color(0xFFFFEDD5), const Color(0xFFEA580C)),
+      'em_andamento' => (const Color(0xFFE0E7FF), const Color(0xFF4F46E5)),
+      'concluido' => (const Color(0xFFDCFCE7), const Color(0xFF15803D)),
+      'recusado' => (const Color(0xFFFEE2E2), const Color(0xFFDC2626)),
+      'cancelada' => (const Color(0xFFFEE2E2), const Color(0xFFDC2626)),
       _ => (const Color(0xFFDBEAFE), const Color(0xFF1D4ED8)),
     };
     return Container(
@@ -405,7 +343,7 @@ class ClienteDetalhesServicoPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status,
+        _rotuloStatus(status),
         style: TextStyle(
           color: corTexto,
           fontSize: 11,

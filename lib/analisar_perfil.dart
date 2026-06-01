@@ -27,11 +27,13 @@ class _AnalisarPerfilPageState extends State<AnalisarPerfilPage> {
         setState(() {
           _imagemSelecionada = imagem;
         });
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Foto de perfil alterada com sucesso!')),
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Erro ao selecionar imagem: $e')));
@@ -152,7 +154,17 @@ class _AnalisarPerfilPageState extends State<AnalisarPerfilPage> {
               'Usuário Casa Limpa';
           final email =
               dadosUser['email'] ?? usuarioAtual.email ?? 'Sem e-mail';
-          final tipo = dadosUser['tipo'] ?? 'cliente';
+          // Rótulo de acesso derivado dos booleanos (o campo 'tipo' foi removido)
+          final acessoCliente = dadosUser['acessoCliente'] == true;
+          final acessoColaborador = dadosUser['acessoColaborador'] == true;
+          final String tipo;
+          if (acessoCliente && acessoColaborador) {
+            tipo = 'Cliente e Colaborador';
+          } else if (acessoColaborador) {
+            tipo = 'Colaborador';
+          } else {
+            tipo = 'Cliente';
+          }
 
           return Padding(
             padding: const EdgeInsets.all(24.0),
@@ -192,7 +204,7 @@ class _AnalisarPerfilPageState extends State<AnalisarPerfilPage> {
                 ),
                 Chip(
                   label: Text(
-                    tipo.toString().toUpperCase(),
+                    tipo.toUpperCase(),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
