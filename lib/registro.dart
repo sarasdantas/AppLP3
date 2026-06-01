@@ -76,7 +76,6 @@ class _RegistroPageState extends State<RegistroPage> {
             'acessoCliente': _acessoCliente,
             'acessoColaborador': _acessoColaborador,
             'avaliacaoMedia': _acessoColaborador ? 0.0 : null,
-            'foto': null,
             'criadoEm': FieldValue.serverTimestamp(),
           });
 
@@ -181,14 +180,19 @@ class _RegistroPageState extends State<RegistroPage> {
               _checkAcesso(
                 label: 'Desejo ter acesso de cliente',
                 value: _acessoCliente,
-                onChanged: (v) => setState(() => _acessoCliente = v ?? false),
+                onChanged: (_) => setState(() {
+                  _acessoCliente = true;
+                  _acessoColaborador = false;
+                }),
               ),
               const SizedBox(height: 12),
               _checkAcesso(
                 label: 'Desejo ter acesso de colaborador',
                 value: _acessoColaborador,
-                onChanged: (v) =>
-                    setState(() => _acessoColaborador = v ?? false),
+                onChanged: (_) => setState(() {
+                  _acessoColaborador = true;
+                  _acessoCliente = false;
+                }),
               ),
               const SizedBox(height: 32),
 
@@ -236,7 +240,7 @@ class _RegistroPageState extends State<RegistroPage> {
     required ValueChanged<bool?> onChanged,
   }) {
     return InkWell(
-      onTap: () => onChanged(!value),
+      onTap: () => onChanged(true),
       borderRadius: BorderRadius.circular(8),
       child: Row(
         children: [
@@ -247,9 +251,7 @@ class _RegistroPageState extends State<RegistroPage> {
               value: value,
               onChanged: onChanged,
               activeColor: const Color(0xFF2563EB),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-              ),
+              shape: const CircleBorder(),
               side: BorderSide(color: Colors.grey.shade400),
             ),
           ),

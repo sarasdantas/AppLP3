@@ -34,6 +34,14 @@ class _ListaPageState extends State<ListaPage> {
     });
   }
 
+  // Indica se o colaborador atual já recusou esta proposta.
+  // A recusa é registrada por colaborador (lista "recusadoPor"), de modo que
+  // recusar não remove a proposta do mural dos demais colaboradores.
+  bool _euRecusei(Map<String, dynamic> dados, String? uid) {
+    final lista = dados['recusadoPor'];
+    return uid != null && lista is List && lista.contains(uid);
+  }
+
   // Define quais propostas pertencem à seção atual conforme o papel
   bool _pertenceSecao(bool isCliente, Map<String, dynamic> dados, String? uid) {
     final status = dados['status'] ?? '';
@@ -44,7 +52,8 @@ class _ListaPageState extends State<ListaPage> {
         return dados['clienteId'] == uid &&
             (status == 'visivel' || status == 'recusado');
       }
-      // Colaborador: mural de novas + as que ele mesmo respondeu
+      // Colaborador: mural de novas (inclui as que ele recusou, exibidas em
+      // "Respondidas") + as que ele mesmo aceitou.
       return status == 'visivel' ||
           (dados['colaboradorId'] == uid &&
               (status == 'aceito' || status == 'recusado'));
@@ -72,15 +81,20 @@ class _ListaPageState extends State<ListaPage> {
   }
 
   // Decide se um documento passa no filtro selecionado
-  bool _passaNoFiltro(String status) {
+  bool _passaNoFiltro(Map<String, dynamic> dados, String? uid) {
+    final status = (dados['status'] ?? '') as String;
+    final euRecusei = _euRecusei(dados, uid);
     final label = _filtrosLabels()[_filtroIndex];
     switch (label) {
       case 'Novas':
-        return status == 'visivel';
+        // Não mostra como "nova" as propostas que este colaborador já recusou.
+        return status == 'visivel' && !euRecusei;
       case 'Respondidas':
-        return status == 'aceito' || status == 'recusado';
+        return euRecusei ||
+            status == 'recusado' ||
+            (status == 'aceito' && dados['colaboradorId'] == uid);
       case 'Pendentes':
-        return status == 'aceito';
+        return status == 'aceito' || status == 'pendente';
       case 'Em andamento':
         return status == 'em_andamento';
       case 'Concluídas':
@@ -266,7 +280,7 @@ class _ListaPageState extends State<ListaPage> {
 
                 final filtrados = visiveis.where((doc) {
                   final dados = doc.data() as Map<String, dynamic>;
-                  return _passaNoFiltro(dados['status'] ?? '');
+                  return _passaNoFiltro(dados, uid);
                 }).toList();
 
                 final subtitulo = _navIndex == 0
@@ -341,6 +355,7 @@ class _ListaPageState extends State<ListaPage> {
                           isCliente,
                           doc.id,
                           doc.data() as Map<String, dynamic>,
+                          uid,
                         ),
                   ],
                 );
@@ -382,9 +397,11 @@ class _ListaPageState extends State<ListaPage> {
     bool isCliente,
     String idDocumento,
     Map<String, dynamic> dados,
+    String? uid,
   ) {
     final status = (dados['status'] ?? 'visivel') as String;
-    final badge = _badgeInfo(isCliente, status);
+    final euRecusei = _euRecusei(dados, uid);
+    final badge = _badgeInfo(isCliente, status, euRecusei);
 
     return GestureDetector(
       onTap: () => _abrirDetalhe(isCliente, idDocumento, dados),
@@ -462,7 +479,7 @@ class _ListaPageState extends State<ListaPage> {
                   ),
                 ),
                 const Spacer(),
-                ..._acoes(isCliente, idDocumento, dados),
+                ..._acoes(isCliente, idDocumento, dados, uid),
               ],
             ),
           ],
@@ -536,29 +553,40 @@ class _ListaPageState extends State<ListaPage> {
     );
   }
 
+  // Recusa individual: registra o colaborador na lista "recusadoPor" sem
+  // alterar o status. Assim a proposta continua visível para os outros.
+  Future<void> _recusarProposta(String idProposta, String? uid) async {
+    if (uid == null) return;
+    await _firestorePropostas.doc(idProposta).update({
+      'recusadoPor': FieldValue.arrayUnion([uid]),
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Proposta recusada.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   // Botões de ação conforme seção/papel/status
   List<Widget> _acoes(
     bool isCliente,
     String idDocumento,
     Map<String, dynamic> dados,
+    String? uid,
   ) {
     final status = (dados['status'] ?? 'visivel') as String;
 
-    // Propostas: colaborador recusa/aceita uma proposta nova
-    if (_navIndex == 0 && !isCliente && status == 'visivel') {
+    // Propostas: colaborador recusa/aceita uma proposta nova que ainda não
+    // recusou (a recusa é individual e não afeta os demais colaboradores).
+    if (_navIndex == 0 &&
+        !isCliente &&
+        status == 'visivel' &&
+        !_euRecusei(dados, uid)) {
       return [
         _botaoAcao('Recusar', const Color(0xFFDC2626), () {
-          final user = FirebaseAuth.instance.currentUser;
-          _atualizarStatus(
-            idDocumento,
-            'recusado',
-            sucesso: 'Proposta recusada.',
-            extra: {
-              'colaboradorId': user?.uid,
-              'colaboradorNome':
-                  user?.displayName ?? user?.email ?? 'Colaborador',
-            },
-          );
+          _recusarProposta(idDocumento, uid);
         }),
         const SizedBox(width: 10),
         _botaoAcao(
@@ -586,24 +614,6 @@ class _ListaPageState extends State<ListaPage> {
     );
   }
 
-  Future<void> _atualizarStatus(
-    String id,
-    String novoStatus, {
-    String? sucesso,
-    Map<String, dynamic>? extra,
-  }) async {
-    // A seção atual define a coleção: Propostas → propostas, Faxinas → faxinas
-    final colecao = _navIndex == 0 ? _firestorePropostas : _firestoreFaxinas;
-    await colecao.doc(id).update({
-      'status': novoStatus,
-      if (extra != null) ...extra,
-    });
-    if (!mounted || sucesso == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(sucesso), backgroundColor: Colors.green),
-    );
-  }
-
   // ── Badge de status ───────────────────────────────────────────────────────
   Widget _statusBadge(_Badge badge) {
     return Container(
@@ -623,7 +633,12 @@ class _ListaPageState extends State<ListaPage> {
     );
   }
 
-  _Badge _badgeInfo(bool isCliente, String status) {
+  _Badge _badgeInfo(bool isCliente, String status, bool euRecusei) {
+    // Colaborador que recusou vê a proposta como "Recusada", mesmo que ela
+    // continue "visivel" para os demais.
+    if (!isCliente && euRecusei && status == 'visivel') {
+      return const _Badge('Recusada', Color(0xFFFEE2E2), Color(0xFFDC2626));
+    }
     switch (status) {
       case 'aceito':
         return isCliente

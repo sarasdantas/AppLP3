@@ -1,9 +1,6 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
 
 class AnalisarPerfilPage extends StatefulWidget {
   const AnalisarPerfilPage({super.key});
@@ -13,86 +10,6 @@ class AnalisarPerfilPage extends StatefulWidget {
 }
 
 class _AnalisarPerfilPageState extends State<AnalisarPerfilPage> {
-  bool _carregandoReset = false;
-  XFile? _imagemSelecionada;
-  final ImagePicker _picker = ImagePicker();
-
-  Future<void> _escolherImagem() async {
-    try {
-      final XFile? imagem = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
-      );
-      if (imagem != null) {
-        setState(() {
-          _imagemSelecionada = imagem;
-        });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Foto de perfil alterada com sucesso!')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Erro ao selecionar imagem: $e')));
-    }
-  }
-
-  Future<void> _resetarSenha(String email) async {
-    setState(() => _carregandoReset = true);
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('E-mail enviado! 📩'),
-          content: Text(
-            'Um link de redefinição de senha foi enviado para $email.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao enviar redefinição: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _carregandoReset = false);
-    }
-  }
-
-  Widget _buildAvatar() {
-    if (_imagemSelecionada != null) {
-      if (kIsWeb) {
-        return CircleAvatar(
-          radius: 60,
-          backgroundImage: NetworkImage(_imagemSelecionada!.path),
-        );
-      } else {
-        return CircleAvatar(
-          radius: 60,
-          backgroundImage: FileImage(File(_imagemSelecionada!.path)),
-        );
-      }
-    }
-    return const CircleAvatar(
-      radius: 60,
-      backgroundColor: Color(0xFF2563EB),
-      child: Icon(Icons.person, size: 70, color: Colors.white),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     // checagem do usuário atual toda vez que a tela reconstrói
@@ -172,26 +89,10 @@ class _AnalisarPerfilPageState extends State<AnalisarPerfilPage> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: 20),
-                Stack(
-                  children: [
-                    _buildAvatar(),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: const Color(0xFF2563EB),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.camera_alt,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                          onPressed: _escolherImagem,
-                        ),
-                      ),
-                    ),
-                  ],
+                const CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Color(0xFF2563EB),
+                  child: Icon(Icons.person, size: 70, color: Colors.white),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -236,42 +137,6 @@ class _AnalisarPerfilPageState extends State<AnalisarPerfilPage> {
                     ),
                   ),
                 ),
-                const Spacer(),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: _carregandoReset
-                        ? null
-                        : () => _resetarSenha(email),
-                    icon: _carregandoReset
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Icon(Icons.lock_reset),
-                    label: const Text(
-                      'Resetar Minha Senha',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
               ],
             ),
           );
