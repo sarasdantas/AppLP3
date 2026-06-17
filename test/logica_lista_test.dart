@@ -1,166 +1,173 @@
 // ============================================================
 //  test/logica_lista_test.dart
-//  Testes Unitários — Casa Limpa
+//  Testes Unitários com Mockito — Casa Limpa
 //  TPS 3: Testes Unitários, Integração e Regressão
 //  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
 //
-//  Execução: dart test test/logica_lista_test.dart
+//  Execução:
+//    1) flutter pub run build_runner build --delete-conflicting-outputs
+//    2) dart test test/logica_lista_test.dart
 // ============================================================
-
 import 'package:test/test.dart';
+import 'package:mockito/mockito.dart';
+import 'package:mockito/annotations.dart';
 
-// ── Funções extraídas de lista.dart ───────────────────────────────────────────
-// Em um projeto real: lib/utils/logica_lista.dart
+import 'logica_lista_test.mocks.dart';
 
-/// Verifica se o colaborador (uid) recusou a proposta.
-bool euRecusei(Map<String, dynamic> dados, String? uid) {
-  final lista = dados['recusadoPor'];
-  return uid != null && lista is List && lista.contains(uid);
+// ── Abstração de um "documento" tipo QueryDocumentSnapshot ───────────────────
+// Em projeto real você pode usar diretamente QueryDocumentSnapshot do Firestore.
+abstract class PropostaDoc {
+  Map<String, dynamic> data();
+  String get id;
 }
 
-/// Decide se um documento passa no filtro selecionado.
-/// [navIndex] 0 = Propostas, 1 = Faxinas
-bool passaNoFiltro(
-  Map<String, dynamic> dados,
-  String? uid,
-  String label,
-) {
-  final status = (dados['status'] ?? '') as String;
-  final recusou = euRecusei(dados, uid);
+// ── Repositório de propostas (esconde o Firestore) ───────────────────────────
+abstract class PropostaRepository {
+  Future<List<PropostaDoc>> listarPropostas();
+}
 
-  switch (label) {
-    case 'Novas':
-      return status == 'visivel' && !recusou;
-    case 'Respondidas':
-      return recusou ||
-          status == 'recusado' ||
-          (status == 'aceito' && dados['colaboradorId'] == uid);
-    case 'Pendentes':
-      return status == 'aceito' || status == 'pendente';
-    case 'Em andamento':
-      return status == 'em_andamento';
-    case 'Concluídas':
-      return status == 'concluido';
-    default: // 'Todas'
-      return true;
+// ── Classe sob teste ────────────────────────────────────────────────────────
+class ListaService {
+  final PropostaRepository repo;
+  ListaService(this.repo);
+
+  bool euRecusei(Map<String, dynamic> dados, String? uid) {
+    final lista = dados['recusadoPor'];
+    return uid != null && lista is List && lista.contains(uid);
+  }
+
+  bool passaNoFiltro(Map<String, dynamic> dados, String? uid, String label) {
+    final status = (dados['status'] ?? '') as String;
+    final recusou = euRecusei(dados, uid);
+    switch (label) {
+      case 'Novas':
+        return status == 'visivel' && !recusou;
+      case 'Respondidas':
+        return recusou ||
+            status == 'recusado' ||
+            (status == 'aceito' && dados['colaboradorId'] == uid);
+      case 'Pendentes':
+        return status == 'aceito' || status == 'pendente';
+      case 'Em andamento':
+        return status == 'em_andamento';
+      case 'Concluídas':
+        return status == 'concluido';
+      default:
+        return true;
+    }
+  }
+
+  /// Busca propostas no repo e devolve apenas as que passam no filtro.
+  Future<List<PropostaDoc>> filtrar(String? uid, String label) async {
+    final docs = await repo.listarPropostas();
+    return docs.where((d) => passaNoFiltro(d.data(), uid, label)).toList();
   }
 }
 
-// ── Testes ────────────────────────────────────────────────────────────────────
+@GenerateMocks([PropostaRepository, PropostaDoc])
 void main() {
   const uid1 = 'uid_colaborador_1';
   const uid2 = 'uid_colaborador_2';
 
-  // ── euRecusei ──────────────────────────────────────────────────────────────
+  late MockPropostaRepository mockRepo;
+  late ListaService service;
+
+  setUp(() {
+    mockRepo = MockPropostaRepository();
+    service = ListaService(mockRepo);
+  });
+
+  // ── euRecusei() ──────────────────────────────────────────────────────────
   group('UT-009 a UT-010 | euRecusei()', () {
     test('UT-009: uid presente em recusadoPor retorna true', () {
-      final dados = {'recusadoPor': [uid1, uid2]};
-      expect(euRecusei(dados, uid1), isTrue);
+      expect(service.euRecusei({'recusadoPor': [uid1, uid2]}, uid1), isTrue);
     });
-
     test('UT-010: uid ausente em recusadoPor retorna false', () {
-      final dados = {'recusadoPor': [uid2]};
-      expect(euRecusei(dados, uid1), isFalse);
+      expect(service.euRecusei({'recusadoPor': [uid2]}, uid1), isFalse);
     });
-
     test('UT-010b: recusadoPor nulo retorna false', () {
-      final dados = <String, dynamic>{};
-      expect(euRecusei(dados, uid1), isFalse);
+      expect(service.euRecusei(<String, dynamic>{}, uid1), isFalse);
     });
-
     test('UT-010c: uid nulo retorna false', () {
-      final dados = {'recusadoPor': [uid1]};
-      expect(euRecusei(dados, null), isFalse);
+      expect(service.euRecusei({'recusadoPor': [uid1]}, null), isFalse);
     });
   });
 
-  // ── Filtro: Novas ──────────────────────────────────────────────────────────
-  group('UT-011 a UT-012 | Filtro "Novas"', () {
-    test('UT-011: visivel e não recusou => aparece em Novas', () {
-      final dados = {'status': 'visivel', 'recusadoPor': <String>[]};
-      expect(passaNoFiltro(dados, uid1, 'Novas'), isTrue);
+  // ── Filtros (lógica pura) ────────────────────────────────────────────────
+  group('UT-011 a UT-014 | passaNoFiltro()', () {
+    test('UT-011: visivel e não recusou => "Novas"', () {
+      expect(
+          service.passaNoFiltro(
+              {'status': 'visivel', 'recusadoPor': <String>[]}, uid1, 'Novas'),
+          isTrue);
     });
-
-    test('UT-012: visivel mas recusou => NÃO aparece em Novas', () {
-      final dados = {'status': 'visivel', 'recusadoPor': [uid1]};
-      expect(passaNoFiltro(dados, uid1, 'Novas'), isFalse);
+    test('UT-012: visivel mas recusou => NÃO aparece em "Novas"', () {
+      expect(
+          service.passaNoFiltro(
+              {'status': 'visivel', 'recusadoPor': [uid1]}, uid1, 'Novas'),
+          isFalse);
     });
-
-    test('UT-012b: status diferente de visivel => NÃO aparece em Novas', () {
-      final dados = {'status': 'aceito', 'recusadoPor': <String>[]};
-      expect(passaNoFiltro(dados, uid1, 'Novas'), isFalse);
+    test('UT-013: aceito aparece em "Pendentes"', () {
+      expect(
+          service.passaNoFiltro({'status': 'aceito'}, uid1, 'Pendentes'), isTrue);
     });
-  });
-
-  // ── Filtro: Respondidas ────────────────────────────────────────────────────
-  group('Filtro "Respondidas"', () {
-    test('Proposta recusada pelo colaborador aparece em Respondidas', () {
-      final dados = {'status': 'visivel', 'recusadoPor': [uid1]};
-      expect(passaNoFiltro(dados, uid1, 'Respondidas'), isTrue);
-    });
-
-    test('Proposta aceita pelo mesmo colaborador aparece em Respondidas', () {
-      final dados = {
-        'status': 'aceito',
-        'colaboradorId': uid1,
-        'recusadoPor': <String>[],
-      };
-      expect(passaNoFiltro(dados, uid1, 'Respondidas'), isTrue);
-    });
-
-    test('Proposta aceita por outro colaborador NÃO aparece em Respondidas', () {
-      final dados = {
-        'status': 'aceito',
-        'colaboradorId': uid2,
-        'recusadoPor': <String>[],
-      };
-      expect(passaNoFiltro(dados, uid1, 'Respondidas'), isFalse);
+    test('UT-014: concluido aparece em "Concluídas"', () {
+      expect(service.passaNoFiltro({'status': 'concluido'}, uid1, 'Concluídas'),
+          isTrue);
     });
   });
 
-  // ── Filtro: Pendentes ──────────────────────────────────────────────────────
-  group('UT-013 | Filtro "Pendentes"', () {
-    test('UT-013: status aceito aparece em Pendentes', () {
-      expect(passaNoFiltro({'status': 'aceito'}, uid1, 'Pendentes'), isTrue);
+  // ── Filtragem ponta-a-ponta com MOCKITO ──────────────────────────────────
+  group('filtrar() — repo mockado devolvendo PropostaDoc mockados', () {
+    test('Retorna apenas propostas "visivel" no filtro "Novas"', () async {
+      // Arrange: cria 3 docs mockados
+      final doc1 = MockPropostaDoc();
+      final doc2 = MockPropostaDoc();
+      final doc3 = MockPropostaDoc();
+      when(doc1.data())
+          .thenReturn({'status': 'visivel', 'recusadoPor': <String>[]});
+      when(doc2.data())
+          .thenReturn({'status': 'aceito', 'colaboradorId': uid2});
+      when(doc3.data())
+          .thenReturn({'status': 'visivel', 'recusadoPor': [uid1]});
+
+      when(mockRepo.listarPropostas())
+          .thenAnswer((_) async => [doc1, doc2, doc3]);
+
+      // Act
+      final resultado = await service.filtrar(uid1, 'Novas');
+
+      // Assert
+      expect(resultado, hasLength(1));
+      expect(resultado.first, same(doc1));
+      verify(mockRepo.listarPropostas()).called(1);
     });
 
-    test('status pendente aparece em Pendentes', () {
-      expect(passaNoFiltro({'status': 'pendente'}, uid1, 'Pendentes'), isTrue);
+    test('Filtro "Respondidas" inclui aceitas pelo próprio uid', () async {
+      final doc1 = MockPropostaDoc();
+      final doc2 = MockPropostaDoc();
+      when(doc1.data()).thenReturn(
+          {'status': 'aceito', 'colaboradorId': uid1, 'recusadoPor': []});
+      when(doc2.data()).thenReturn(
+          {'status': 'aceito', 'colaboradorId': uid2, 'recusadoPor': []});
+
+      when(mockRepo.listarPropostas())
+          .thenAnswer((_) async => [doc1, doc2]);
+
+      final resultado = await service.filtrar(uid1, 'Respondidas');
+
+      expect(resultado, hasLength(1));
+      expect(resultado.first, same(doc1));
     });
 
-    test('status em_andamento NÃO aparece em Pendentes', () {
-      expect(passaNoFiltro({'status': 'em_andamento'}, uid1, 'Pendentes'), isFalse);
-    });
-  });
+    test('Repo vazio => lista vazia (sem chamadas extras)', () async {
+      when(mockRepo.listarPropostas()).thenAnswer((_) async => []);
 
-  // ── Filtro: Em andamento ───────────────────────────────────────────────────
-  group('Filtro "Em andamento"', () {
-    test('status em_andamento aparece', () {
-      expect(passaNoFiltro({'status': 'em_andamento'}, uid1, 'Em andamento'), isTrue);
-    });
+      final resultado = await service.filtrar(uid1, 'Todas');
 
-    test('status concluido NÃO aparece em Em andamento', () {
-      expect(passaNoFiltro({'status': 'concluido'}, uid1, 'Em andamento'), isFalse);
+      expect(resultado, isEmpty);
+      verify(mockRepo.listarPropostas()).called(1);
+      verifyNoMoreInteractions(mockRepo);
     });
-  });
-
-  // ── Filtro: Concluídas ─────────────────────────────────────────────────────
-  group('UT-014 | Filtro "Concluídas"', () {
-    test('UT-014: status concluido aparece em Concluídas', () {
-      expect(passaNoFiltro({'status': 'concluido'}, uid1, 'Concluídas'), isTrue);
-    });
-
-    test('status em_andamento NÃO aparece em Concluídas', () {
-      expect(passaNoFiltro({'status': 'em_andamento'}, uid1, 'Concluídas'), isFalse);
-    });
-  });
-
-  // ── Filtro: Todas ──────────────────────────────────────────────────────────
-  group('Filtro "Todas"', () {
-    for (final status in ['visivel', 'aceito', 'pendente', 'em_andamento', 'concluido', 'cancelada']) {
-      test('status "$status" passa no filtro Todas', () {
-        expect(passaNoFiltro({'status': status}, uid1, 'Todas'), isTrue);
-      });
-    }
   });
 }

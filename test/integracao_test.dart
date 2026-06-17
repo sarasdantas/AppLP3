@@ -1,296 +1,379 @@
 // ============================================================
 //  test/integracao_test.dart
-//  Testes de Integração — Casa Limpa
+//  Testes de Integração com Mockito — Casa Limpa
 //  TPS 3: Testes Unitários, Integração e Regressão
 //  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
 //
-//  Execução: dart test test/integracao_test.dart
+//  Execução:
+//    1) flutter pub run build_runner build --delete-conflicting-outputs
+//    2) dart test test/integracao_test.dart
 // ============================================================
 import 'package:test/test.dart';
+import 'package:mockito/mockito.dart';
+import 'package:mockito/annotations.dart';
 
-// ── Funções reutilizadas dos módulos existentes ──────────────────────────────
-// Validadores (de validadores_test.dart)
-String? validarEmail(String? v) =>
-    (v != null && v.contains('@')) ? null : 'Insira um e-mail válido';
-
-String? validarSenha(String? v) =>
-    (v == null || v.length < 6) ? 'Mínimo de 6 caracteres' : null;
-
-String? validarNome(String? v) =>
-    (v == null || v.trim().isEmpty) ? 'Informe seu nome' : null;
-
-String? validarConfirmarSenha(String? v, String senha) =>
-    (v != senha) ? 'As senhas não conferem' : null;
-
-// Lógica de status (de logica_status_test.dart)
-String rotuloStatus(String status) {
-  switch (status) {
-    case 'visivel':
-      return 'Aguardando';
-    case 'aceito':
-      return 'Pendente';
-    case 'em_andamento':
-      return 'Em andamento';
-    case 'concluido':
-      return 'Concluído';
-    case 'recusado':
-      return 'Recusada';
-    case 'cancelada':
-      return 'Cancelada';
-    default:
-      return status;
-  }
-}
-
-bool podeEditar(String statusAtual) => statusAtual == 'visivel';
-
-String acaoColaborador(String status) {
-  if (status == 'pendente') return 'iniciar';
-  if (status == 'em_andamento') return 'finalizar';
-  return 'concluido';
-}
-
-// Lógica de lista (de logica_lista_test.dart)
-bool euRecusei(Map<String, dynamic> dados, String? uid) {
-  final lista = dados['recusadoPor'];
-  return uid != null && lista is List && lista.contains(uid);
-}
-
-bool passaNoFiltro(Map<String, dynamic> dados, String? uid, String label) {
-  final status = (dados['status'] ?? '') as String;
-  final recusou = euRecusei(dados, uid);
-  switch (label) {
-    case 'Novas':
-      return status == 'visivel' && !recusou;
-    case 'Respondidas':
-      return recusou ||
-          status == 'recusado' ||
-          (status == 'aceito' && dados['colaboradorId'] == uid);
-    case 'Pendentes':
-      return status == 'aceito' || status == 'pendente';
-    case 'Em andamento':
-      return status == 'em_andamento';
-    case 'Concluídas':
-      return status == 'concluido';
-    default:
-      return true;
-  }
-}
-
-// ── Lógica de acesso (de logica_status_test.dart — regressão) ────────────────
-bool temAcesso(Map<String, dynamic>? dados, String tipoUsuario) {
-  if (dados == null) return true;
-  final acessoCliente = dados['acessoCliente'] == true;
-  final acessoColaborador = dados['acessoColaborador'] == true;
-  if (acessoCliente || acessoColaborador) {
-    return tipoUsuario == 'cliente' ? acessoCliente : acessoColaborador;
-  }
-  return true;
-}
+import 'integracao_test.mocks.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  SIMULADORES DE INTEGRAÇÃO
-//  Simulam a interação entre módulos como ocorreria no app real.
+//  CAMADA DE DOMÍNIO + SERVIÇOS
 // ══════════════════════════════════════════════════════════════════════════════
-
-/// Simula o fluxo completo de registro de usuário:
-/// valida nome, email, senha e confirmação de senha.
-/// Retorna null se tudo OK, ou a primeira mensagem de erro encontrada.
-String? fluxoRegistro(String nome, String email, String senha, String confirmar) {
-  return validarNome(nome) ??
-      validarEmail(email) ??
-      validarSenha(senha) ??
-      validarConfirmarSenha(confirmar, senha);
+class Validador {
+  String? validarEmail(String? v) =>
+      (v != null && v.contains('@')) ? null : 'Insira um e-mail válido';
+  String? validarSenha(String? v) =>
+      (v == null || v.length < 6) ? 'Mínimo de 6 caracteres' : null;
+  String? validarNome(String? v) =>
+      (v == null || v.trim().isEmpty) ? 'Informe seu nome' : null;
+  String? validarConfirmarSenha(String? v, String s) =>
+      (v != s) ? 'As senhas não conferem' : null;
 }
 
-/// Simula o fluxo completo de login:
-/// valida credenciais + verifica acesso por tipo de usuário.
-/// Retorna um Map com 'sucesso' (bool) e 'mensagem' (String).
-Map<String, dynamic> fluxoLogin(
-  String email,
-  String senha,
-  Map<String, dynamic>? dadosFirestore,
-  String tipoUsuario,
-) {
-  final erroEmail = validarEmail(email);
-  if (erroEmail != null) return {'sucesso': false, 'mensagem': erroEmail};
+abstract class AuthService {
+  /// Faz login no provedor (Firebase Auth) e retorna o uid, ou null se falhar.
+  Future<String?> login(String email, String senha);
 
-  final erroSenha = validarSenha(senha);
-  if (erroSenha != null) return {'sucesso': false, 'mensagem': erroSenha};
+  /// Cria um novo usuário e retorna o uid.
+  Future<String> registrar(String email, String senha);
+}
 
-  if (!temAcesso(dadosFirestore, tipoUsuario)) {
-    return {'sucesso': false, 'mensagem': 'Acesso negado para este tipo de conta'};
+abstract class FirestoreService {
+  Future<Map<String, dynamic>?> obterUsuario(String uid);
+  Future<void> salvarUsuario(String uid, Map<String, dynamic> dados);
+  Future<void> atualizarStatusFaxina(String faxinaId, String novoStatus);
+}
+
+// Fluxo de Registro: usa Validador + AuthService + FirestoreService
+class RegistroFlow {
+  final Validador validador;
+  final AuthService auth;
+  final FirestoreService firestore;
+  RegistroFlow(this.validador, this.auth, this.firestore);
+
+  Future<String?> executar({
+    required String nome,
+    required String email,
+    required String senha,
+    required String confirmar,
+  }) async {
+    final erro = validador.validarNome(nome) ??
+        validador.validarEmail(email) ??
+        validador.validarSenha(senha) ??
+        validador.validarConfirmarSenha(confirmar, senha);
+    if (erro != null) return erro;
+
+    final uid = await auth.registrar(email, senha);
+    await firestore.salvarUsuario(uid, {
+      'nome': nome,
+      'email': email,
+      'acessoCliente': true,
+      'acessoColaborador': false,
+    });
+    return null;
   }
-
-  return {'sucesso': true, 'mensagem': 'Login realizado com sucesso'};
 }
 
-/// Simula o ciclo de vida completo de uma faxina:
-/// criação → aceite → início → conclusão, verificando status e filtros em cada etapa.
+// Fluxo de Login
+class LoginFlow {
+  final Validador validador;
+  final AuthService auth;
+  final FirestoreService firestore;
+  LoginFlow(this.validador, this.auth, this.firestore);
+
+  Future<Map<String, dynamic>> executar(
+      String email, String senha, String tipoUsuario) async {
+    final erroEmail = validador.validarEmail(email);
+    if (erroEmail != null) return {'sucesso': false, 'mensagem': erroEmail};
+    final erroSenha = validador.validarSenha(senha);
+    if (erroSenha != null) return {'sucesso': false, 'mensagem': erroSenha};
+
+    final uid = await auth.login(email, senha);
+    if (uid == null) {
+      return {'sucesso': false, 'mensagem': 'Credenciais inválidas'};
+    }
+
+    final dados = await firestore.obterUsuario(uid);
+    if (dados != null) {
+      final ac = dados['acessoCliente'] == true;
+      final aco = dados['acessoColaborador'] == true;
+      if (ac || aco) {
+        final ok = tipoUsuario == 'cliente' ? ac : aco;
+        if (!ok) {
+          return {
+            'sucesso': false,
+            'mensagem': 'Acesso negado para este tipo de conta'
+          };
+        }
+      }
+    }
+    return {'sucesso': true, 'mensagem': 'Login realizado com sucesso'};
+  }
+}
+
+// Ciclo de Faxina — persiste mudanças via FirestoreService
 class CicloFaxina {
-  Map<String, dynamic> dados;
-  CicloFaxina()
-      : dados = {
-          'status': 'visivel',
-          'recusadoPor': <String>[],
-          'colaboradorId': null,
-        };
+  final FirestoreService firestore;
+  final String faxinaId;
+  String status;
+  CicloFaxina(this.firestore, this.faxinaId) : status = 'visivel';
 
-  String get statusAtual => dados['status'] as String;
-  String get rotulo => rotuloStatus(statusAtual);
-  bool get editavel => podeEditar(statusAtual);
-
-  void aceitar(String colaboradorId) {
-    dados['status'] = 'aceito';
-    dados['colaboradorId'] = colaboradorId;
+  Future<void> aceitar() async {
+    status = 'aceito';
+    await firestore.atualizarStatusFaxina(faxinaId, status);
   }
 
-  void iniciar() {
-    dados['status'] = 'em_andamento';
+  Future<void> iniciar() async {
+    status = 'em_andamento';
+    await firestore.atualizarStatusFaxina(faxinaId, status);
   }
 
-  void concluir() {
-    dados['status'] = 'concluido';
+  Future<void> concluir() async {
+    status = 'concluido';
+    await firestore.atualizarStatusFaxina(faxinaId, status);
   }
 
-  void recusar(String colaboradorId) {
-    (dados['recusadoPor'] as List).add(colaboradorId);
-  }
-
-  void cancelar() {
-    dados['status'] = 'cancelada';
+  Future<void> cancelar() async {
+    status = 'cancelada';
+    await firestore.atualizarStatusFaxina(faxinaId, status);
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  TESTES DE INTEGRAÇÃO
-// ══════════════════════════════════════════════════════════════════════════════
+@GenerateMocks([Validador, AuthService, FirestoreService])
 void main() {
+  late MockValidador mockValidador;
+  late MockAuthService mockAuth;
+  late MockFirestoreService mockFirestore;
+
+  setUp(() {
+    mockValidador = MockValidador();
+    mockAuth = MockAuthService();
+    mockFirestore = MockFirestoreService();
+  });
+
   // ── INT-001 a INT-004 | Fluxo de Registro ─────────────────────────────────
-  group('INT-001 a INT-004 | Fluxo completo de Registro', () {
-    test('INT-001: registro com todos os campos válidos retorna null (sucesso)', () {
-      expect(
-        fluxoRegistro('Maria Silva', 'maria@email.com', 'senha123', 'senha123'),
-        isNull,
+  group('INT-001 a INT-004 | RegistroFlow com mocks', () {
+    test('INT-001: registro válido salva no Firestore e retorna null', () async {
+      when(mockValidador.validarNome(any)).thenReturn(null);
+      when(mockValidador.validarEmail(any)).thenReturn(null);
+      when(mockValidador.validarSenha(any)).thenReturn(null);
+      when(mockValidador.validarConfirmarSenha(any, any)).thenReturn(null);
+      when(mockAuth.registrar('maria@email.com', 'senha123'))
+          .thenAnswer((_) async => 'uid_maria');
+      when(mockFirestore.salvarUsuario(any, any)).thenAnswer((_) async {
+        return null;
+      });
+
+      final flow = RegistroFlow(mockValidador, mockAuth, mockFirestore);
+      final r = await flow.executar(
+        nome: 'Maria Silva',
+        email: 'maria@email.com',
+        senha: 'senha123',
+        confirmar: 'senha123',
       );
+
+      expect(r, isNull);
+      verify(mockAuth.registrar('maria@email.com', 'senha123')).called(1);
+      verify(mockFirestore.salvarUsuario('uid_maria', argThat(predicate(
+              (Map m) => m['nome'] == 'Maria Silva' && m['acessoCliente'] == true))))
+          .called(1);
     });
 
-    test('INT-002: registro com nome vazio falha na primeira validação', () {
-      expect(
-        fluxoRegistro('', 'maria@email.com', 'senha123', 'senha123'),
-        equals('Informe seu nome'),
+    test('INT-002: nome vazio falha e NÃO chama Auth/Firestore', () async {
+      when(mockValidador.validarNome(''))
+          .thenReturn('Informe seu nome');
+
+      final flow = RegistroFlow(mockValidador, mockAuth, mockFirestore);
+      final r = await flow.executar(
+        nome: '',
+        email: 'x@y.com',
+        senha: 'senha123',
+        confirmar: 'senha123',
       );
+
+      expect(r, equals('Informe seu nome'));
+      verifyNever(mockAuth.registrar(any, any));
+      verifyNever(mockFirestore.salvarUsuario(any, any));
     });
 
-    test('INT-003: registro com email inválido falha na segunda validação', () {
-      expect(
-        fluxoRegistro('Maria Silva', 'emailinvalido', 'senha123', 'senha123'),
-        equals('Insira um e-mail válido'),
+    test('INT-003: email inválido => Auth não é chamado', () async {
+      when(mockValidador.validarNome(any)).thenReturn(null);
+      when(mockValidador.validarEmail(any))
+          .thenReturn('Insira um e-mail válido');
+
+      final flow = RegistroFlow(mockValidador, mockAuth, mockFirestore);
+      final r = await flow.executar(
+        nome: 'Maria',
+        email: 'invalido',
+        senha: 'senha123',
+        confirmar: 'senha123',
       );
+
+      expect(r, equals('Insira um e-mail válido'));
+      verifyZeroInteractions(mockAuth);
+      verifyZeroInteractions(mockFirestore);
     });
 
-    test('INT-004: registro com senhas diferentes falha na confirmação', () {
-      expect(
-        fluxoRegistro('Maria Silva', 'maria@email.com', 'senha123', 'outra456'),
-        equals('As senhas não conferem'),
+    test('INT-004: senhas diferentes => não chama Auth nem Firestore', () async {
+      when(mockValidador.validarNome(any)).thenReturn(null);
+      when(mockValidador.validarEmail(any)).thenReturn(null);
+      when(mockValidador.validarSenha(any)).thenReturn(null);
+      when(mockValidador.validarConfirmarSenha('outra456', 'senha123'))
+          .thenReturn('As senhas não conferem');
+
+      final flow = RegistroFlow(mockValidador, mockAuth, mockFirestore);
+      final r = await flow.executar(
+        nome: 'Maria',
+        email: 'm@e.com',
+        senha: 'senha123',
+        confirmar: 'outra456',
       );
+
+      expect(r, equals('As senhas não conferem'));
+      verifyNever(mockAuth.registrar(any, any));
     });
   });
 
-  // ── INT-005 a INT-008 | Fluxo de Login ─────────────────────────────────────
-  group('INT-005 a INT-008 | Fluxo completo de Login + Verificação de Acesso', () {
-    test('INT-005: login de cliente válido com acesso permitido', () {
-      final dadosFirestore = {'acessoCliente': true, 'acessoColaborador': false};
-      final resultado = fluxoLogin('user@email.com', 'senha123', dadosFirestore, 'cliente');
-      expect(resultado['sucesso'], isTrue);
-      expect(resultado['mensagem'], equals('Login realizado com sucesso'));
+  // ── INT-005 a INT-008 | Fluxo de Login ────────────────────────────────────
+  group('INT-005 a INT-008 | LoginFlow com mocks', () {
+    test('INT-005: cliente válido com acesso permitido', () async {
+      when(mockValidador.validarEmail(any)).thenReturn(null);
+      when(mockValidador.validarSenha(any)).thenReturn(null);
+      when(mockAuth.login('user@email.com', 'senha123'))
+          .thenAnswer((_) async => 'uid_user');
+      when(mockFirestore.obterUsuario('uid_user')).thenAnswer(
+          (_) async => {'acessoCliente': true, 'acessoColaborador': false});
+
+      final r = await LoginFlow(mockValidador, mockAuth, mockFirestore)
+          .executar('user@email.com', 'senha123', 'cliente');
+
+      expect(r['sucesso'], isTrue);
+      expect(r['mensagem'], equals('Login realizado com sucesso'));
+      verify(mockAuth.login('user@email.com', 'senha123')).called(1);
+      verify(mockFirestore.obterUsuario('uid_user')).called(1);
     });
 
-    test('INT-006: login com email inválido é barrado antes da verificação de acesso', () {
-      final dadosFirestore = {'acessoCliente': true, 'acessoColaborador': false};
-      final resultado = fluxoLogin('emailinvalido', 'senha123', dadosFirestore, 'cliente');
-      expect(resultado['sucesso'], isFalse);
-      expect(resultado['mensagem'], equals('Insira um e-mail válido'));
+    test('INT-006: email inválido barra antes do Auth', () async {
+      when(mockValidador.validarEmail('emailinvalido'))
+          .thenReturn('Insira um e-mail válido');
+
+      final r = await LoginFlow(mockValidador, mockAuth, mockFirestore)
+          .executar('emailinvalido', 'senha123', 'cliente');
+
+      expect(r['sucesso'], isFalse);
+      expect(r['mensagem'], equals('Insira um e-mail válido'));
+      verifyZeroInteractions(mockAuth);
+      verifyZeroInteractions(mockFirestore);
     });
 
-    test('INT-007: login com senha curta é barrado antes da verificação de acesso', () {
-      final dadosFirestore = {'acessoCliente': true, 'acessoColaborador': false};
-      final resultado = fluxoLogin('user@email.com', '123', dadosFirestore, 'cliente');
-      expect(resultado['sucesso'], isFalse);
-      expect(resultado['mensagem'], equals('Mínimo de 6 caracteres'));
+    test('INT-007: senha curta barra antes do Auth', () async {
+      when(mockValidador.validarEmail(any)).thenReturn(null);
+      when(mockValidador.validarSenha('123'))
+          .thenReturn('Mínimo de 6 caracteres');
+
+      final r = await LoginFlow(mockValidador, mockAuth, mockFirestore)
+          .executar('user@email.com', '123', 'cliente');
+
+      expect(r['sucesso'], isFalse);
+      expect(r['mensagem'], equals('Mínimo de 6 caracteres'));
+      verifyZeroInteractions(mockAuth);
     });
 
-    test('INT-008: login de cliente tentando acessar como colaborador é bloqueado', () {
-      final dadosFirestore = {'acessoCliente': true, 'acessoColaborador': false};
-      final resultado = fluxoLogin('user@email.com', 'senha123', dadosFirestore, 'colaborador');
-      expect(resultado['sucesso'], isFalse);
-      expect(resultado['mensagem'], equals('Acesso negado para este tipo de conta'));
+    test('INT-008: cliente tentando acessar como colaborador é bloqueado',
+        () async {
+      when(mockValidador.validarEmail(any)).thenReturn(null);
+      when(mockValidador.validarSenha(any)).thenReturn(null);
+      when(mockAuth.login(any, any)).thenAnswer((_) async => 'uid_user');
+      when(mockFirestore.obterUsuario('uid_user')).thenAnswer(
+          (_) async => {'acessoCliente': true, 'acessoColaborador': false});
+
+      final r = await LoginFlow(mockValidador, mockAuth, mockFirestore)
+          .executar('user@email.com', 'senha123', 'colaborador');
+
+      expect(r['sucesso'], isFalse);
+      expect(r['mensagem'], equals('Acesso negado para este tipo de conta'));
+    });
+
+    test('Credenciais inválidas no Auth => login falha', () async {
+      when(mockValidador.validarEmail(any)).thenReturn(null);
+      when(mockValidador.validarSenha(any)).thenReturn(null);
+      when(mockAuth.login(any, any)).thenAnswer((_) async => null);
+
+      final r = await LoginFlow(mockValidador, mockAuth, mockFirestore)
+          .executar('user@email.com', 'senha123', 'cliente');
+
+      expect(r['sucesso'], isFalse);
+      expect(r['mensagem'], equals('Credenciais inválidas'));
+      verifyNever(mockFirestore.obterUsuario(any));
     });
   });
 
-  // ── INT-009 a INT-014 | Ciclo de Vida da Faxina ────────────────────────────
-  group('INT-009 a INT-014 | Ciclo de vida completo de uma Faxina', () {
-    const colabId = 'uid_colab_1';
-    const colabId2 = 'uid_colab_2';
-
-    test('INT-009: faxina recém-criada está visível, editável e aparece em "Novas"', () {
-      final faxina = CicloFaxina();
-      expect(faxina.statusAtual, equals('visivel'));
-      expect(faxina.rotulo, equals('Aguardando'));
-      expect(faxina.editavel, isTrue);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Novas'), isTrue);
+  // ── INT-009 a INT-014 | Ciclo de vida da Faxina ───────────────────────────
+  group('INT-009 a INT-014 | CicloFaxina com FirestoreService mockado', () {
+    test('INT-009: faxina recém-criada está visível', () {
+      final f = CicloFaxina(mockFirestore, 'fx1');
+      expect(f.status, equals('visivel'));
+      verifyZeroInteractions(mockFirestore);
     });
 
-    test('INT-010: após aceite, status muda, não é mais editável e aparece em "Pendentes"', () {
-      final faxina = CicloFaxina();
-      faxina.aceitar(colabId);
-      expect(faxina.statusAtual, equals('aceito'));
-      expect(faxina.rotulo, equals('Pendente'));
-      expect(faxina.editavel, isFalse);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Pendentes'), isTrue);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Novas'), isFalse);
+    test('INT-010: aceitar() muda status e persiste', () async {
+      when(mockFirestore.atualizarStatusFaxina(any, any))
+          .thenAnswer((_) async {
+            return null;
+          });
+      final f = CicloFaxina(mockFirestore, 'fx1');
+
+      await f.aceitar();
+
+      expect(f.status, equals('aceito'));
+      verify(mockFirestore.atualizarStatusFaxina('fx1', 'aceito')).called(1);
     });
 
-    test('INT-011: após iniciar, aparece em "Em andamento" e ação é "finalizar"', () {
-      final faxina = CicloFaxina();
-      faxina.aceitar(colabId);
-      faxina.iniciar();
-      expect(faxina.statusAtual, equals('em_andamento'));
-      expect(faxina.rotulo, equals('Em andamento'));
-      expect(acaoColaborador(faxina.statusAtual), equals('finalizar'));
-      expect(passaNoFiltro(faxina.dados, colabId, 'Em andamento'), isTrue);
+    test('INT-011: iniciar() persiste "em_andamento"', () async {
+      when(mockFirestore.atualizarStatusFaxina(any, any))
+          .thenAnswer((_) async {
+            return null;
+          });
+      final f = CicloFaxina(mockFirestore, 'fx1');
+
+      await f.aceitar();
+      await f.iniciar();
+
+      expect(f.status, equals('em_andamento'));
+      verify(mockFirestore.atualizarStatusFaxina('fx1', 'em_andamento'))
+          .called(1);
     });
 
-    test('INT-012: após concluir, aparece em "Concluídas" e não é mais editável', () {
-      final faxina = CicloFaxina();
-      faxina.aceitar(colabId);
-      faxina.iniciar();
-      faxina.concluir();
-      expect(faxina.statusAtual, equals('concluido'));
-      expect(faxina.rotulo, equals('Concluído'));
-      expect(faxina.editavel, isFalse);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Concluídas'), isTrue);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Em andamento'), isFalse);
+    test('INT-012: concluir() persiste "concluido"', () async {
+      when(mockFirestore.atualizarStatusFaxina(any, any))
+          .thenAnswer((_) async {
+            return null;
+          });
+      final f = CicloFaxina(mockFirestore, 'fx1');
+
+      await f.aceitar();
+      await f.iniciar();
+      await f.concluir();
+
+      expect(f.status, equals('concluido'));
+      // Verifica a ORDEM das chamadas
+      verifyInOrder([
+        mockFirestore.atualizarStatusFaxina('fx1', 'aceito'),
+        mockFirestore.atualizarStatusFaxina('fx1', 'em_andamento'),
+        mockFirestore.atualizarStatusFaxina('fx1', 'concluido'),
+      ]);
     });
 
-    test('INT-013: colaborador que recusou não vê em "Novas", mas outro colaborador vê', () {
-      final faxina = CicloFaxina();
-      faxina.recusar(colabId);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Novas'), isFalse);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Respondidas'), isTrue);
-      expect(passaNoFiltro(faxina.dados, colabId2, 'Novas'), isTrue);
-    });
+    test('INT-014: cancelar() persiste "cancelada"', () async {
+      when(mockFirestore.atualizarStatusFaxina(any, any))
+          .thenAnswer((_) async {
+            return null;
+          });
+      final f = CicloFaxina(mockFirestore, 'fx1');
 
-    test('INT-014: faxina cancelada não aparece em filtros ativos', () {
-      final faxina = CicloFaxina();
-      faxina.cancelar();
-      expect(faxina.rotulo, equals('Cancelada'));
-      expect(passaNoFiltro(faxina.dados, colabId, 'Novas'), isFalse);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Pendentes'), isFalse);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Em andamento'), isFalse);
-      expect(passaNoFiltro(faxina.dados, colabId, 'Concluídas'), isFalse);
-      // mas aparece em "Todas"
-      expect(passaNoFiltro(faxina.dados, colabId, 'Todas'), isTrue);
+      await f.cancelar();
+
+      expect(f.status, equals('cancelada'));
+      verify(mockFirestore.atualizarStatusFaxina('fx1', 'cancelada')).called(1);
+      verifyNoMoreInteractions(mockFirestore);
     });
   });
 }

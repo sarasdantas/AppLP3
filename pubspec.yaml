@@ -15,12 +15,14 @@ dependencies:
   firebase_core: ^4.8.0
   firebase_auth: ^6.5.0
   cloud_firestore: ^6.4.0
-  test: ^1.30.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  test: ^1.30.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.9
 
 flutter:
   uses-material-design: true

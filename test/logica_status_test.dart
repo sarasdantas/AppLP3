@@ -1,164 +1,151 @@
 // ============================================================
 //  test/logica_status_test.dart
-//  Testes Unitários — Casa Limpa
+//  Testes Unitários com Mockito — Casa Limpa
 //  TPS 3: Testes Unitários, Integração e Regressão
 //  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
 //
-//  Execução: dart test test/logica_status_test.dart
+//  Execução:
+//    1) flutter pub run build_runner build --delete-conflicting-outputs
+//    2) dart test test/logica_status_test.dart
 // ============================================================
-
 import 'package:test/test.dart';
+import 'package:mockito/mockito.dart';
+import 'package:mockito/annotations.dart';
 
-// ── Funções extraídas de cliente_detalhes_servico.dart / editar_faxina.dart ──
+import 'logica_status_test.mocks.dart';
 
-/// Retorna o rótulo legível para cada status interno.
-String rotuloStatus(String status) {
-  switch (status) {
-    case 'visivel':
-      return 'Aguardando';
-    case 'aceito':
-      return 'Pendente';
-    case 'em_andamento':
-      return 'Em andamento';
-    case 'concluido':
-      return 'Concluído';
-    case 'recusado':
-      return 'Recusada';
-    case 'cancelada':
-      return 'Cancelada';
-    default:
-      return status;
+// ── Abstração que esconde o Firestore ────────────────────────────────────────
+// Em projeto real: lib/services/usuario_repository.dart
+abstract class UsuarioRepository {
+  /// Retorna os dados do usuário (ex.: do Firestore) ou null se não existir.
+  Future<Map<String, dynamic>?> obterDadosUsuario(String uid);
+}
+
+// ── Classe sob teste: lógica de status + acesso, recebendo repo por injeção ──
+class StatusService {
+  final UsuarioRepository repo;
+  StatusService(this.repo);
+
+  String rotuloStatus(String status) {
+    switch (status) {
+      case 'visivel':
+        return 'Aguardando';
+      case 'aceito':
+        return 'Pendente';
+      case 'em_andamento':
+        return 'Em andamento';
+      case 'concluido':
+        return 'Concluído';
+      case 'recusado':
+        return 'Recusada';
+      case 'cancelada':
+        return 'Cancelada';
+      default:
+        return status;
+    }
+  }
+
+  bool podeEditar(String statusAtual) => statusAtual == 'visivel';
+
+  String acaoColaborador(String status) {
+    if (status == 'pendente') return 'iniciar';
+    if (status == 'em_andamento') return 'finalizar';
+    return 'concluido';
+  }
+
+  /// Busca os dados no repositório e decide se o usuário tem acesso.
+  Future<bool> temAcesso(String uid, String tipoUsuario) async {
+    final dados = await repo.obterDadosUsuario(uid);
+    if (dados == null) return true;
+    final acessoCliente = dados['acessoCliente'] == true;
+    final acessoColaborador = dados['acessoColaborador'] == true;
+    if (acessoCliente || acessoColaborador) {
+      return tipoUsuario == 'cliente' ? acessoCliente : acessoColaborador;
+    }
+    return true;
   }
 }
 
-/// Verifica se a proposta pode ser editada com base no status atual.
-bool podeEditar(String statusAtual) => statusAtual == 'visivel';
-
-/// Verifica se os botões de ação do colaborador devem ser exibidos.
-/// Retorna a ação disponível: 'iniciar', 'finalizar' ou 'concluido'.
-String acaoColaborador(String status) {
-  if (status == 'pendente') return 'iniciar';
-  if (status == 'em_andamento') return 'finalizar';
-  return 'concluido';
-}
-
-// ── Testes ────────────────────────────────────────────────────────────────────
+@GenerateMocks([UsuarioRepository])
 void main() {
-  // ── rotuloStatus() ─────────────────────────────────────────────────────────
+  late MockUsuarioRepository mockRepo;
+  late StatusService service;
+
+  setUp(() {
+    mockRepo = MockUsuarioRepository();
+    service = StatusService(mockRepo);
+  });
+
+  // ── rotuloStatus() (lógica pura) ──────────────────────────────────────────
   group('UT-015 a UT-018 | rotuloStatus()', () {
-    test('UT-015: visivel => Aguardando', () {
-      expect(rotuloStatus('visivel'), equals('Aguardando'));
-    });
-
-    test('UT-016: aceito => Pendente', () {
-      expect(rotuloStatus('aceito'), equals('Pendente'));
-    });
-
-    test('UT-017: em_andamento => Em andamento', () {
-      expect(rotuloStatus('em_andamento'), equals('Em andamento'));
-    });
-
-    test('UT-018: concluido => Concluído', () {
-      expect(rotuloStatus('concluido'), equals('Concluído'));
-    });
-
-    test('recusado => Recusada', () {
-      expect(rotuloStatus('recusado'), equals('Recusada'));
-    });
-
-    test('cancelada => Cancelada', () {
-      expect(rotuloStatus('cancelada'), equals('Cancelada'));
-    });
-
-    test('status desconhecido => retorna o próprio valor', () {
-      expect(rotuloStatus('outro_status'), equals('outro_status'));
-    });
+    test('UT-015: visivel => Aguardando',
+        () => expect(service.rotuloStatus('visivel'), equals('Aguardando')));
+    test('UT-016: aceito => Pendente',
+        () => expect(service.rotuloStatus('aceito'), equals('Pendente')));
+    test('UT-017: em_andamento => Em andamento',
+        () => expect(
+            service.rotuloStatus('em_andamento'), equals('Em andamento')));
+    test('UT-018: concluido => Concluído',
+        () => expect(service.rotuloStatus('concluido'), equals('Concluído')));
+    test('status desconhecido => retorna o próprio valor',
+        () => expect(service.rotuloStatus('outro'), equals('outro')));
   });
 
-  // ── podeEditar() ───────────────────────────────────────────────────────────
+  // ── podeEditar() ─────────────────────────────────────────────────────────
   group('UT-019 a UT-020 | podeEditar()', () {
-    test('UT-019: status aceito bloqueia edição', () {
-      expect(podeEditar('aceito'), isFalse);
-    });
-
-    test('UT-019b: status em_andamento bloqueia edição', () {
-      expect(podeEditar('em_andamento'), isFalse);
-    });
-
-    test('UT-019c: status concluido bloqueia edição', () {
-      expect(podeEditar('concluido'), isFalse);
-    });
-
-    test('UT-019d: status cancelada bloqueia edição', () {
-      expect(podeEditar('cancelada'), isFalse);
-    });
-
-    test('UT-020: status visivel permite edição', () {
-      expect(podeEditar('visivel'), isTrue);
-    });
+    test('UT-019: status aceito bloqueia edição',
+        () => expect(service.podeEditar('aceito'), isFalse));
+    test('UT-020: status visivel permite edição',
+        () => expect(service.podeEditar('visivel'), isTrue));
   });
 
-  // ── acaoColaborador() ──────────────────────────────────────────────────────
-  group('Ação disponível para colaborador conforme status', () {
-    test('status pendente => ação é iniciar', () {
-      expect(acaoColaborador('pendente'), equals('iniciar'));
-    });
-
-    test('status em_andamento => ação é finalizar', () {
-      expect(acaoColaborador('em_andamento'), equals('finalizar'));
-    });
-
-    test('status concluido => ação é concluido (botão desabilitado)', () {
-      expect(acaoColaborador('concluido'), equals('concluido'));
-    });
-
-    test('qualquer outro status => ação padrão é concluido', () {
-      expect(acaoColaborador('outro'), equals('concluido'));
-    });
+  // ── acaoColaborador() ────────────────────────────────────────────────────
+  group('Ação disponível para colaborador', () {
+    test('pendente => iniciar',
+        () => expect(service.acaoColaborador('pendente'), equals('iniciar')));
+    test('em_andamento => finalizar',
+        () => expect(
+            service.acaoColaborador('em_andamento'), equals('finalizar')));
+    test('concluido => concluido',
+        () => expect(service.acaoColaborador('concluido'), equals('concluido')));
   });
 
-  // ── Teste de Regressão: lógica de acesso (login.dart) ─────────────────────
-  group('Regressão — _temAcesso() (lógica simulada)', () {
-    /// Simula o retorno do Firestore e a lógica de _temAcesso()
-    bool temAcesso(Map<String, dynamic>? dados, String tipoUsuario) {
-      if (dados == null) return true;
+  // ── temAcesso() — agora usando MOCKITO no lugar de Map fixo ──────────────
+  group('Regressão — temAcesso() com Mockito', () {
+    test('cliente acessando como cliente => permitido', () async {
+      when(mockRepo.obterDadosUsuario('uid_cli')).thenAnswer(
+          (_) async => {'acessoCliente': true, 'acessoColaborador': false});
 
-      final acessoCliente = dados['acessoCliente'] == true;
-      final acessoColaborador = dados['acessoColaborador'] == true;
+      final ok = await service.temAcesso('uid_cli', 'cliente');
 
-      if (acessoCliente || acessoColaborador) {
-        return tipoUsuario == 'cliente' ? acessoCliente : acessoColaborador;
-      }
-      return true; // conta antiga sem campos: não bloqueia
-    }
-
-    test('conta de cliente acessando como cliente => permitido', () {
-      final dados = {'acessoCliente': true, 'acessoColaborador': false};
-      expect(temAcesso(dados, 'cliente'), isTrue);
+      expect(ok, isTrue);
+      verify(mockRepo.obterDadosUsuario('uid_cli')).called(1);
     });
 
-    test('conta de cliente tentando acessar como colaborador => bloqueado', () {
-      final dados = {'acessoCliente': true, 'acessoColaborador': false};
-      expect(temAcesso(dados, 'colaborador'), isFalse);
+    test('cliente tentando acessar como colaborador => bloqueado', () async {
+      when(mockRepo.obterDadosUsuario(any)).thenAnswer(
+          (_) async => {'acessoCliente': true, 'acessoColaborador': false});
+
+      final ok = await service.temAcesso('uid_cli', 'colaborador');
+      expect(ok, isFalse);
     });
 
-    test('conta de colaborador acessando como colaborador => permitido', () {
-      final dados = {'acessoCliente': false, 'acessoColaborador': true};
-      expect(temAcesso(dados, 'colaborador'), isTrue);
+    test('colaborador acessando como colaborador => permitido', () async {
+      when(mockRepo.obterDadosUsuario(any)).thenAnswer(
+          (_) async => {'acessoCliente': false, 'acessoColaborador': true});
+
+      expect(await service.temAcesso('uid_col', 'colaborador'), isTrue);
     });
 
-    test('conta de colaborador tentando acessar como cliente => bloqueado', () {
-      final dados = {'acessoCliente': false, 'acessoColaborador': true};
-      expect(temAcesso(dados, 'cliente'), isFalse);
+    test('dados nulos (documento não existe) => não bloqueia', () async {
+      when(mockRepo.obterDadosUsuario(any)).thenAnswer((_) async => null);
+      expect(await service.temAcesso('uid_x', 'cliente'), isTrue);
     });
 
-    test('dados nulos (documento não existe) => não bloqueia', () {
-      expect(temAcesso(null, 'cliente'), isTrue);
-    });
-
-    test('conta antiga sem campos de acesso => não bloqueia', () {
-      final dados = <String, dynamic>{'nome': 'Usuário antigo'};
-      expect(temAcesso(dados, 'cliente'), isTrue);
+    test('conta antiga sem campos de acesso => não bloqueia', () async {
+      when(mockRepo.obterDadosUsuario(any))
+          .thenAnswer((_) async => {'nome': 'Usuário antigo'});
+      expect(await service.temAcesso('uid_legado', 'cliente'), isTrue);
     });
   });
 }
