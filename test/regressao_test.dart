@@ -1,22 +1,10 @@
-// ============================================================
-//  test/regressao_test.dart
-//  Testes de Regressão com Mockito — Casa Limpa
-//  TPS 3: Testes Unitários, Integração e Regressão
-//  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
-//
-//  Execução:
-//    1) flutter pub run build_runner build --delete-conflicting-outputs
-//    2) dart test test/regressao_test.dart
-// ============================================================
 import 'package:test/test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 
 import 'regressao_test.mocks.dart';
 
-// ══════════════════════════════════════════════════════════════════════════════
 //  CLASSES SOB TESTE (espelho da app real)
-// ══════════════════════════════════════════════════════════════════════════════
 class Validador {
   String? validarEmail(String? v) =>
       (v != null && v.contains('@')) ? null : 'Insira um e-mail válido';
@@ -66,7 +54,7 @@ class AcessoService {
 
 @GenerateMocks([UsuarioRepository, Validador])
 void main() {
-  // ── REG-001 a REG-003 | Validadores após refatoração ─────────────────────
+  // Validadores após refatoração
   group('REG-001 a REG-003 | Validadores (instância real)', () {
     final v = Validador();
     test('REG-001: e-mails com caracteres especiais antes do @ continuam válidos', () {
@@ -83,7 +71,7 @@ void main() {
     });
   });
 
-  // ── REG-004 a REG-006 | Acesso usando MOCKITO ────────────────────────────
+  // Acesso usando MOCKITO
   group('REG-004 a REG-006 | AcessoService com UsuarioRepository mockado', () {
     late MockUsuarioRepository mockRepo;
     late AcessoService acesso;
@@ -120,7 +108,7 @@ void main() {
     });
   });
 
-  // ── REG-007 a REG-010 | Mapeamento de status ────────────────────────────
+  // Mapeamento de status
   group('REG-007 a REG-010 | StatusService (lógica pura)', () {
     final s = StatusService();
     test('REG-007: todos os status originais mantêm rótulos', () {
@@ -154,7 +142,7 @@ void main() {
     });
   });
 
-  // ── REG-VAL | Regressão usando Validador MOCKADO em um consumidor ───────
+  // Regressão usando Validador MOCKADO em um consumidor
   group('REG-VAL | Validador mockado garante chamadas esperadas', () {
     test('Mock de Validador retorna respostas controladas (não regride API)', () {
       final mockV = MockValidador();

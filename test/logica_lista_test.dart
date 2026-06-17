@@ -1,32 +1,20 @@
-// ============================================================
-//  test/logica_lista_test.dart
-//  Testes Unitários com Mockito — Casa Limpa
-//  TPS 3: Testes Unitários, Integração e Regressão
-//  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
-//
-//  Execução:
-//    1) flutter pub run build_runner build --delete-conflicting-outputs
-//    2) dart test test/logica_lista_test.dart
-// ============================================================
 import 'package:test/test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 
 import 'logica_lista_test.mocks.dart';
 
-// ── Abstração de um "documento" tipo QueryDocumentSnapshot ───────────────────
-// Em projeto real você pode usar diretamente QueryDocumentSnapshot do Firestore.
 abstract class PropostaDoc {
   Map<String, dynamic> data();
   String get id;
 }
 
-// ── Repositório de propostas (esconde o Firestore) ───────────────────────────
+// Repositório de propostas (esconde o Firestore)
 abstract class PropostaRepository {
   Future<List<PropostaDoc>> listarPropostas();
 }
 
-// ── Classe sob teste ────────────────────────────────────────────────────────
+// ─Classe sob teste
 class ListaService {
   final PropostaRepository repo;
   ListaService(this.repo);
@@ -57,7 +45,7 @@ class ListaService {
     }
   }
 
-  /// Busca propostas no repo e devolve apenas as que passam no filtro.
+  // Busca propostas no repo e devolve apenas as que passam no filtro.
   Future<List<PropostaDoc>> filtrar(String? uid, String label) async {
     final docs = await repo.listarPropostas();
     return docs.where((d) => passaNoFiltro(d.data(), uid, label)).toList();
@@ -77,7 +65,7 @@ void main() {
     service = ListaService(mockRepo);
   });
 
-  // ── euRecusei() ──────────────────────────────────────────────────────────
+  // euRecusei()
   group('UT-009 a UT-010 | euRecusei()', () {
     test('UT-009: uid presente em recusadoPor retorna true', () {
       expect(service.euRecusei({'recusadoPor': [uid1, uid2]}, uid1), isTrue);
@@ -93,7 +81,7 @@ void main() {
     });
   });
 
-  // ── Filtros (lógica pura) ────────────────────────────────────────────────
+  // Filtros (lógica pura)
   group('UT-011 a UT-014 | passaNoFiltro()', () {
     test('UT-011: visivel e não recusou => "Novas"', () {
       expect(
@@ -117,7 +105,7 @@ void main() {
     });
   });
 
-  // ── Filtragem ponta-a-ponta com MOCKITO ──────────────────────────────────
+  // Filtragem ponta-a-ponta com MOCKITO 
   group('filtrar() — repo mockado devolvendo PropostaDoc mockados', () {
     test('Retorna apenas propostas "visivel" no filtro "Novas"', () async {
       // Arrange: cria 3 docs mockados

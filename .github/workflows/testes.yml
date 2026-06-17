@@ -1,0 +1,35 @@
+name: Testes Casa Limpa
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+      
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      
+      - name: Instalar dependências
+        run: flutter pub get
+      
+      - name: Gerar mocks
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+      
+      - name: Rodar testes unitários
+        run: dart test test/validadores_test.dart test/logica_status_test.dart test/logica_lista_test.dart
+      
+      - name: Rodar testes de integração
+        run: dart test test/integracao_test.dart
+      
+      - name: Rodar testes de regressão
+        run: dart test test/regressao_test.dart

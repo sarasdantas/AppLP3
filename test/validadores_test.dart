@@ -1,21 +1,10 @@
-// ============================================================
-//  test/validadores_test.dart
-//  Testes Unitários com Mockito — Casa Limpa
-//  TPS 3: Testes Unitários, Integração e Regressão
-//  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
-//
-//  Execução:
-//    1) flutter pub run build_runner build --delete-conflicting-outputs
-//    2) dart test test/validadores_test.dart
-// ============================================================
 import 'package:test/test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 
 import 'validadores_test.mocks.dart';
 
-// ── Classe sob teste (real) ──────────────────────────────────────────────────
-// Em projeto real: lib/utils/validador.dart
+// Classe sob teste
 class Validador {
   String? validarEmail(String? v) =>
       (v != null && v.contains('@')) ? null : 'Insira um e-mail válido';
@@ -27,13 +16,11 @@ class Validador {
       (v == null || v.trim().isEmpty) ? 'Informe seu nome' : null;
 }
 
-// ── Consumidor que DEPENDE de Validador (alvo dos mocks) ─────────────────────
-// Em projeto real: lib/controllers/registro_controller.dart
 class RegistroController {
   final Validador validador;
   RegistroController(this.validador);
 
-  /// Retorna null se OK, ou a primeira mensagem de erro encontrada.
+  // Retorna null se OK, ou a primeira mensagem de erro encontrada.
   String? validarFormulario({
     required String nome,
     required String email,
@@ -47,12 +34,10 @@ class RegistroController {
   }
 }
 
-// ── Anotação para gerar os mocks ─────────────────────────────────────────────
+// Anotação para gerar os mocks
 @GenerateMocks([Validador])
 void main() {
-  // ──────────────────────────────────────────────────────────────────────────
-  // PARTE A — Testes da própria classe Validador (sem mock — é o SUT)
-  // ──────────────────────────────────────────────────────────────────────────
+  // Testes da própria classe Validador
   group('UT-001 a UT-008 | Validador (classe real)', () {
     late Validador validador;
 
@@ -91,9 +76,7 @@ void main() {
     });
   });
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // PARTE B — Testes com MOCKITO: RegistroController usa Validador MOCKADO
-  // ──────────────────────────────────────────────────────────────────────────
+  // Testes com MOCKITO: RegistroController usa Validador MOCKADO
   group('UT-MOCK | RegistroController com Validador mockado', () {
     late MockValidador mockValidador;
     late RegistroController controller;

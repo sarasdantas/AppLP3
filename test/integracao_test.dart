@@ -1,22 +1,10 @@
-// ============================================================
-//  test/integracao_test.dart
-//  Testes de Integração com Mockito — Casa Limpa
-//  TPS 3: Testes Unitários, Integração e Regressão
-//  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
-//
-//  Execução:
-//    1) flutter pub run build_runner build --delete-conflicting-outputs
-//    2) dart test test/integracao_test.dart
-// ============================================================
 import 'package:test/test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 
 import 'integracao_test.mocks.dart';
 
-// ══════════════════════════════════════════════════════════════════════════════
 //  CAMADA DE DOMÍNIO + SERVIÇOS
-// ══════════════════════════════════════════════════════════════════════════════
 class Validador {
   String? validarEmail(String? v) =>
       (v != null && v.contains('@')) ? null : 'Insira um e-mail válido';
@@ -29,10 +17,10 @@ class Validador {
 }
 
 abstract class AuthService {
-  /// Faz login no provedor (Firebase Auth) e retorna o uid, ou null se falhar.
+  // Faz login no provedor (Firebase Auth) e retorna o uid, ou null se falhar.
   Future<String?> login(String email, String senha);
 
-  /// Cria um novo usuário e retorna o uid.
+  // Cria um novo usuário e retorna o uid.
   Future<String> registrar(String email, String senha);
 }
 
@@ -149,7 +137,7 @@ void main() {
     mockFirestore = MockFirestoreService();
   });
 
-  // ── INT-001 a INT-004 | Fluxo de Registro ─────────────────────────────────
+  // Fluxo de Registro
   group('INT-001 a INT-004 | RegistroFlow com mocks', () {
     test('INT-001: registro válido salva no Firestore e retorna null', () async {
       when(mockValidador.validarNome(any)).thenReturn(null);
@@ -232,7 +220,7 @@ void main() {
     });
   });
 
-  // ── INT-005 a INT-008 | Fluxo de Login ────────────────────────────────────
+  // Fluxo de Login
   group('INT-005 a INT-008 | LoginFlow com mocks', () {
     test('INT-005: cliente válido com acesso permitido', () async {
       when(mockValidador.validarEmail(any)).thenReturn(null);
@@ -306,7 +294,7 @@ void main() {
     });
   });
 
-  // ── INT-009 a INT-014 | Ciclo de vida da Faxina ───────────────────────────
+  // Ciclo de vida da Faxina
   group('INT-009 a INT-014 | CicloFaxina com FirestoreService mockado', () {
     test('INT-009: faxina recém-criada está visível', () {
       final f = CicloFaxina(mockFirestore, 'fx1');

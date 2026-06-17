@@ -1,27 +1,16 @@
-// ============================================================
-//  test/logica_status_test.dart
-//  Testes Unitários com Mockito — Casa Limpa
-//  TPS 3: Testes Unitários, Integração e Regressão
-//  Fatec Rio Preto — GQS — Prof. Fábio T. Onishi — 2026
-//
-//  Execução:
-//    1) flutter pub run build_runner build --delete-conflicting-outputs
-//    2) dart test test/logica_status_test.dart
-// ============================================================
 import 'package:test/test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 
 import 'logica_status_test.mocks.dart';
 
-// ── Abstração que esconde o Firestore ────────────────────────────────────────
-// Em projeto real: lib/services/usuario_repository.dart
+// Abstração que esconde o Firestore
 abstract class UsuarioRepository {
-  /// Retorna os dados do usuário (ex.: do Firestore) ou null se não existir.
+  // Retorna os dados do usuário ou null se não existir.
   Future<Map<String, dynamic>?> obterDadosUsuario(String uid);
 }
 
-// ── Classe sob teste: lógica de status + acesso, recebendo repo por injeção ──
+// Classe sob teste: lógica de status + acesso, recebendo repo por injeção
 class StatusService {
   final UsuarioRepository repo;
   StatusService(this.repo);
@@ -53,7 +42,7 @@ class StatusService {
     return 'concluido';
   }
 
-  /// Busca os dados no repositório e decide se o usuário tem acesso.
+  // Busca os dados no repositório e decide se o usuário tem acesso.
   Future<bool> temAcesso(String uid, String tipoUsuario) async {
     final dados = await repo.obterDadosUsuario(uid);
     if (dados == null) return true;
@@ -76,7 +65,7 @@ void main() {
     service = StatusService(mockRepo);
   });
 
-  // ── rotuloStatus() (lógica pura) ──────────────────────────────────────────
+  // rotuloStatus() (lógica pura)
   group('UT-015 a UT-018 | rotuloStatus()', () {
     test('UT-015: visivel => Aguardando',
         () => expect(service.rotuloStatus('visivel'), equals('Aguardando')));
@@ -91,7 +80,7 @@ void main() {
         () => expect(service.rotuloStatus('outro'), equals('outro')));
   });
 
-  // ── podeEditar() ─────────────────────────────────────────────────────────
+  // podeEditar()
   group('UT-019 a UT-020 | podeEditar()', () {
     test('UT-019: status aceito bloqueia edição',
         () => expect(service.podeEditar('aceito'), isFalse));
@@ -99,7 +88,7 @@ void main() {
         () => expect(service.podeEditar('visivel'), isTrue));
   });
 
-  // ── acaoColaborador() ────────────────────────────────────────────────────
+  // acaoColaborador()
   group('Ação disponível para colaborador', () {
     test('pendente => iniciar',
         () => expect(service.acaoColaborador('pendente'), equals('iniciar')));
@@ -110,7 +99,7 @@ void main() {
         () => expect(service.acaoColaborador('concluido'), equals('concluido')));
   });
 
-  // ── temAcesso() — agora usando MOCKITO no lugar de Map fixo ──────────────
+  // temAcesso() usando MOCKITO
   group('Regressão — temAcesso() com Mockito', () {
     test('cliente acessando como cliente => permitido', () async {
       when(mockRepo.obterDadosUsuario('uid_cli')).thenAnswer(
