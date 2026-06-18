@@ -42,66 +42,88 @@ class _LoginPageState extends State<LoginPage> {
     return true; // conta antiga sem campos de acesso: não bloqueia
   }
 
-  Future<void> _autenticar(String tipoUsuario) async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
+  
+Future<void> _autenticar(String tipoUsuario) async {
+  if (!_formKey.currentState!.validate()) return;
 
-    try {
-      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _senhaController.text.trim(),
-      );
+  setState(() => _loading = true);
 
-      // Verifica se a conta tem o acesso do papel escolhido na tela inicial
-      if (!await _temAcesso(cred.user!.uid, tipoUsuario)) {
-        await FirebaseAuth.instance.signOut();
-        if (!mounted) return;
-        final outro = tipoUsuario == 'cliente' ? 'colaborador' : 'cliente';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Esta conta não tem acesso de $tipoUsuario. '
-              'Tente entrar como $outro ou cadastre esse acesso.',
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
+  try {
+    final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: _emailController.text.trim(),
+      password: _senhaController.text.trim(),
+    );
 
+    final acessoLiberado = await _temAcesso(cred.user!.uid, tipoUsuario);
+
+    if (!acessoLiberado) {
+      await FirebaseAuth.instance.signOut();
       if (!mounted) return;
-      // Entra no painel com o papel escolhido na tela inicial
-      Navigator.pushReplacementNamed(context, '/lista', arguments: tipoUsuario);
-    } on FirebaseAuthException catch (ex) {
-      String mensagem;
-      switch (ex.code) {
-        case 'invalid-email':
-          mensagem = 'E-mail inválido.';
-          break;
-        case 'user-disabled':
-          mensagem = 'Esta conta foi desativada.';
-          break;
-        case 'user-not-found':
-        case 'wrong-password':
-        case 'invalid-credential':
-          mensagem = 'E-mail ou senha incorretos.';
-          break;
-        default:
-          mensagem = ex.message ?? 'Não foi possível entrar.';
-      }
-      if (!mounted) return;
+
+      final outro = tipoUsuario == 'cliente' ? 'colaborador' : 'cliente';
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(mensagem),
+          content: Text(
+            'Esta conta não tem acesso de $tipoUsuario. '
+            'Tente entrar como $outro ou cadastre esse acesso.',
+          ),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      return;
     }
+
+    if (!mounted) return;
+
+    Navigator.pushReplacementNamed(
+      context,
+      '/lista',
+      arguments: tipoUsuario,
+    );
+  } on FirebaseAuthException catch (ex) {
+    String mensagem;
+    switch (ex.code) {
+      case 'invalid-email':
+        mensagem = 'E-mail inválido.';
+        break;
+      case 'user-disabled':
+        mensagem = 'Esta conta foi desativada.';
+        break;
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        mensagem = 'E-mail ou senha incorretos.';
+        break;
+      default:
+        mensagem = ex.message ?? 'Não foi possível entrar.';
+    }
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensagem),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Erro ao abrir o dashboard: $e'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } finally {
+    if (mounted) setState(() => _loading = false);
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
